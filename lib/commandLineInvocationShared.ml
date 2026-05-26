@@ -128,16 +128,8 @@ let optionPairOfToken token remainingTokens =
                   usageText)))
 
 let valueOfOptionToken token remainingTokens =
-  match optionNameAndValueOfEqualsSyntax token with
-  | Some (_, optionValue) -> (optionValue, remainingTokens)
-  | None -> (
-      match remainingTokens with
-      | optionValue :: tail -> (optionValue, tail)
-      | [] ->
-          raise
-            (Invalid_argument
-               (Printf.sprintf "Missing value for option %s\n\n%s" token
-                  usageText)))
+  let (_, optionValue), tail = optionPairOfToken token remainingTokens in
+  (optionValue, tail)
 
 let variableAssignmentOfText variableAssignmentText =
   match String.index_opt variableAssignmentText '=' with
