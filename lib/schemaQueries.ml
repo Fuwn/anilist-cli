@@ -1,6 +1,84 @@
+let typeRefFragment =
+  {|fragment TypeRef on __Type {
+  kind
+  name
+  ofType {
+    kind
+    name
+    ofType {
+      kind
+      name
+      ofType {
+        kind
+        name
+        ofType {
+          kind
+          name
+          ofType {
+            kind
+            name
+            ofType {
+              kind
+              name
+              ofType {
+                kind
+                name
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}|}
+
+let inputValueFragment =
+  {|fragment InputValue on __InputValue {
+  name
+  description
+  type {
+    ...TypeRef
+  }
+  defaultValue
+}|}
+
+let fullTypeFragment =
+  {|fragment FullType on __Type {
+  kind
+  name
+  description
+  fields(includeDeprecated: true) {
+    name
+    description
+    args {
+      ...InputValue
+    }
+    type {
+      ...TypeRef
+    }
+    isDeprecated
+    deprecationReason
+  }
+  inputFields {
+    ...InputValue
+  }
+  interfaces {
+    ...TypeRef
+  }
+  enumValues(includeDeprecated: true) {
+    name
+    description
+    isDeprecated
+    deprecationReason
+  }
+  possibleTypes {
+    ...TypeRef
+  }
+}|}
+
 let fullSchemaQueryText =
-  {|
-query IntrospectionQuery {
+  Printf.sprintf
+    {|query IntrospectionQuery {
   __schema {
     queryType {
       name
@@ -25,169 +103,31 @@ query IntrospectionQuery {
   }
 }
 
-fragment FullType on __Type {
-  kind
-  name
-  description
-  fields(includeDeprecated: true) {
-    name
-    description
-    args {
-      ...InputValue
-    }
-    type {
-      ...TypeRef
-    }
-    isDeprecated
-    deprecationReason
-  }
-  inputFields {
-    ...InputValue
-  }
-  interfaces {
-    ...TypeRef
-  }
-  enumValues(includeDeprecated: true) {
-    name
-    description
-    isDeprecated
-    deprecationReason
-  }
-  possibleTypes {
-    ...TypeRef
-  }
-}
+%s
 
-fragment InputValue on __InputValue {
-  name
-  description
-  type {
-    ...TypeRef
-  }
-  defaultValue
-}
+%s
 
-fragment TypeRef on __Type {
-  kind
-  name
-  ofType {
-    kind
-    name
-    ofType {
-      kind
-      name
-      ofType {
-        kind
-        name
-        ofType {
-          kind
-          name
-          ofType {
-            kind
-            name
-            ofType {
-              kind
-              name
-              ofType {
-                kind
-                name
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-|}
+%s|}
+    fullTypeFragment inputValueFragment typeRefFragment
 
 let typeQueryText =
-  {|
-query IntrospectionTypeQuery($name: String!) {
+  Printf.sprintf
+    {|query IntrospectionTypeQuery($name: String!) {
   __type(name: $name) {
     ...FullType
   }
 }
 
-fragment FullType on __Type {
-  kind
-  name
-  description
-  fields(includeDeprecated: true) {
-    name
-    description
-    args {
-      ...InputValue
-    }
-    type {
-      ...TypeRef
-    }
-    isDeprecated
-    deprecationReason
-  }
-  inputFields {
-    ...InputValue
-  }
-  interfaces {
-    ...TypeRef
-  }
-  enumValues(includeDeprecated: true) {
-    name
-    description
-    isDeprecated
-    deprecationReason
-  }
-  possibleTypes {
-    ...TypeRef
-  }
-}
+%s
 
-fragment InputValue on __InputValue {
-  name
-  description
-  type {
-    ...TypeRef
-  }
-  defaultValue
-}
+%s
 
-fragment TypeRef on __Type {
-  kind
-  name
-  ofType {
-    kind
-    name
-    ofType {
-      kind
-      name
-      ofType {
-        kind
-        name
-        ofType {
-          kind
-          name
-          ofType {
-            kind
-            name
-            ofType {
-              kind
-              name
-              ofType {
-                kind
-                name
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-|}
+%s|}
+    fullTypeFragment inputValueFragment typeRefFragment
 
 let directiveQueryText =
-  {|
-query IntrospectionDirectiveQuery {
+  Printf.sprintf
+    {|query IntrospectionDirectiveQuery {
   __schema {
     directives {
       name
@@ -200,45 +140,7 @@ query IntrospectionDirectiveQuery {
   }
 }
 
-fragment InputValue on __InputValue {
-  name
-  description
-  type {
-    ...TypeRef
-  }
-  defaultValue
-}
+%s
 
-fragment TypeRef on __Type {
-  kind
-  name
-  ofType {
-    kind
-    name
-    ofType {
-      kind
-      name
-      ofType {
-        kind
-        name
-        ofType {
-          kind
-          name
-          ofType {
-            kind
-            name
-            ofType {
-              kind
-              name
-              ofType {
-                kind
-                name
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-|}
+%s|}
+    inputValueFragment typeRefFragment
