@@ -15,54 +15,54 @@ let assertContainsSubstring substring text =
   loop 0
 
 let fieldSegment ?alias ?(directives = []) fieldName optionPairs =
-  let loweredFieldSegment : LoweringEngine.fieldSegment =
+  let loweredFieldSegment : CommandLineInvocationTypes.fieldSegment =
     {
-      LoweringEngine.fieldName;
-      LoweringEngine.fieldAlias = alias;
-      LoweringEngine.fieldArgumentPairs = optionPairs;
-      LoweringEngine.fieldDirectiveTexts = directives;
+      CommandLineInvocationTypes.fieldName;
+      CommandLineInvocationTypes.fieldAlias = alias;
+      CommandLineInvocationTypes.fieldArgumentPairs = optionPairs;
+      CommandLineInvocationTypes.fieldDirectiveTexts = directives;
     }
   in
-  LoweringEngine.FieldSegment loweredFieldSegment
+  CommandLineInvocationTypes.FieldSegment loweredFieldSegment
 
 let inlineFragmentSegment ?(directives = []) typeCondition =
-  LoweringEngine.InlineFragmentSegment
+  CommandLineInvocationTypes.InlineFragmentSegment
     ({
-       LoweringEngine.inlineFragmentTypeCondition = typeCondition;
+       CommandLineInvocationTypes.inlineFragmentTypeCondition = typeCondition;
        inlineFragmentDirectiveTexts = directives;
      }
-      : LoweringEngine.inlineFragmentSegment)
+      : CommandLineInvocationTypes.inlineFragmentSegment)
 
 let fragmentSpreadSegment ?(directives = []) name =
-  LoweringEngine.FragmentSpreadSegment
+  CommandLineInvocationTypes.FragmentSpreadSegment
     ({
-       LoweringEngine.fragmentSpreadName = name;
+       CommandLineInvocationTypes.fragmentSpreadName = name;
        fragmentSpreadDirectiveTexts = directives;
      }
-      : LoweringEngine.fragmentSpreadSegment)
+      : CommandLineInvocationTypes.fragmentSpreadSegment)
 
 let selectionBranch selectionPathSegments selectionExpressions =
-  { LoweringEngine.selectionPathSegments; selectionExpressions }
+  { CommandLineInvocationTypes.selectionPathSegments; selectionExpressions }
 
 let operationDefinition ?operationName ?(variableDefinitions = [])
     ?(variableAssignments = []) ?(directives = []) rootSelectionExpressions
     selectionBranches =
   ({
-     LoweringEngine.operationType = LoweringEngine.Query;
-     LoweringEngine.operationName;
-     LoweringEngine.variableDefinitions;
-     LoweringEngine.variableAssignments;
-     LoweringEngine.operationDirectiveTexts = directives;
-     LoweringEngine.rootSelectionExpressions;
-     LoweringEngine.selectionBranches;
+     CommandLineInvocationTypes.operationType = CommandLineInvocationTypes.Query;
+     CommandLineInvocationTypes.operationName;
+     CommandLineInvocationTypes.variableDefinitions;
+     CommandLineInvocationTypes.variableAssignments;
+     CommandLineInvocationTypes.operationDirectiveTexts = directives;
+     CommandLineInvocationTypes.rootSelectionExpressions;
+     CommandLineInvocationTypes.selectionBranches;
    }
-    : LoweringEngine.operationDefinition)
+    : CommandLineInvocationTypes.operationDefinition)
 
 let structuredFragmentDefinition ?(directives = []) fragmentName
     fragmentTypeCondition fragmentRootSelectionExpressions
     fragmentSelectionBranches =
   {
-    LoweringEngine.fragmentName;
+    CommandLineInvocationTypes.fragmentName;
     fragmentTypeCondition;
     fragmentDirectiveTexts = directives;
     fragmentRootSelectionExpressions;
@@ -96,15 +96,18 @@ let testExplicitOperationWithMultipleRootFields () =
       ~operationDefinitions:
         [
           ({
-             LoweringEngine.operationType = LoweringEngine.Query;
-             LoweringEngine.operationName = Some "Viewer";
-             LoweringEngine.variableDefinitions = [ "$userName: String!" ];
-             LoweringEngine.variableAssignments =
+             CommandLineInvocationTypes.operationType =
+               CommandLineInvocationTypes.Query;
+             CommandLineInvocationTypes.operationName = Some "Viewer";
+             CommandLineInvocationTypes.variableDefinitions =
+               [ "$userName: String!" ];
+             CommandLineInvocationTypes.variableAssignments =
                [ ("userName", "string:fuwn") ];
-             LoweringEngine.operationDirectiveTexts =
+             CommandLineInvocationTypes.operationDirectiveTexts =
                [ "cacheControl(maxAge: 60)" ];
-             LoweringEngine.rootSelectionExpressions = [ "viewer.id" ];
-             LoweringEngine.selectionBranches =
+             CommandLineInvocationTypes.rootSelectionExpressions =
+               [ "viewer.id" ];
+             CommandLineInvocationTypes.selectionBranches =
                [
                  selectionBranch
                    [ fieldSegment "user" [ ("name", "var:userName") ] ]
@@ -114,7 +117,7 @@ let testExplicitOperationWithMultipleRootFields () =
                    [ "title.romaji" ];
                ];
            }
-            : LoweringEngine.operationDefinition);
+            : CommandLineInvocationTypes.operationDefinition);
         ]
       ~selectedOperationName:(Some "Viewer") ~structuredFragmentDefinitions:[]
       ~rawFragmentDefinitionTexts:[]
@@ -357,16 +360,18 @@ let testMultipleOperationDocumentLowering () =
       ~operationDefinitions:
         [
           ({
-             LoweringEngine.operationType = LoweringEngine.Query;
-             LoweringEngine.operationName = Some "Viewer";
-             LoweringEngine.variableDefinitions = [];
-             LoweringEngine.variableAssignments = [];
-             LoweringEngine.operationDirectiveTexts =
+             CommandLineInvocationTypes.operationType =
+               CommandLineInvocationTypes.Query;
+             CommandLineInvocationTypes.operationName = Some "Viewer";
+             CommandLineInvocationTypes.variableDefinitions = [];
+             CommandLineInvocationTypes.variableAssignments = [];
+             CommandLineInvocationTypes.operationDirectiveTexts =
                [ "cacheControl(maxAge: 60)" ];
-             LoweringEngine.rootSelectionExpressions = [ "viewer.id" ];
-             LoweringEngine.selectionBranches = [];
+             CommandLineInvocationTypes.rootSelectionExpressions =
+               [ "viewer.id" ];
+             CommandLineInvocationTypes.selectionBranches = [];
            }
-            : LoweringEngine.operationDefinition);
+            : CommandLineInvocationTypes.operationDefinition);
           operationDefinition ~operationName:"UserLookup" []
             [
               selectionBranch
