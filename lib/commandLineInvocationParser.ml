@@ -23,6 +23,15 @@ let withCurrentOperationOrRaise ~optionDescription parserState mapOperation =
            (Printf.sprintf "%s requires a current operation.\n\n%s"
               optionDescription CommandLineInvocationShared.usageText))
 
+let updateBranchOrFallback parserState ~onBranch ~onNoBranch =
+  match
+    CommandLineInvocationBranch.currentSelectionBranchOfState parserState
+  with
+  | Some branch ->
+      CommandLineInvocationState.withUpdatedCurrentSelectionBranch parserState
+        (onBranch branch)
+  | None -> onNoBranch parserState
+
 let handleOperation parserState token remainingTokens =
   let operationHeaderText, remainingTokens =
     CommandLineInvocationShared.valueOfOptionToken token remainingTokens
@@ -83,19 +92,14 @@ let handleSelectionSet parserState token remainingTokens =
   let selectionExpression, remainingTokens =
     CommandLineInvocationShared.valueOfOptionToken token remainingTokens
   in
-  let updatedParserState =
-    match
-      CommandLineInvocationBranch.currentSelectionBranchOfState parserState
-    with
-    | Some selectionBranchBuilder ->
-        CommandLineInvocationState.withUpdatedCurrentSelectionBranch parserState
-          (CommandLineInvocationBranch.withAddedBranchSelectionExpression
-             selectionBranchBuilder selectionExpression)
-    | None ->
-        CommandLineInvocationState.withAddedRootSelectionExpression parserState
-          selectionExpression
-  in
-  (updatedParserState, remainingTokens)
+  ( updateBranchOrFallback parserState
+      ~onBranch:(fun branch ->
+        CommandLineInvocationBranch.withAddedBranchSelectionExpression branch
+          selectionExpression)
+      ~onNoBranch:(fun state ->
+        CommandLineInvocationState.withAddedRootSelectionExpression state
+          selectionExpression),
+    remainingTokens )
 
 let handleOperationName parserState token remainingTokens =
   let operationName, remainingTokens =
@@ -147,40 +151,30 @@ let handleDirective parserState token remainingTokens =
   let directiveText, remainingTokens =
     CommandLineInvocationShared.valueOfOptionToken token remainingTokens
   in
-  let updatedParserState =
-    match
-      CommandLineInvocationBranch.currentSelectionBranchOfState parserState
-    with
-    | Some selectionBranchBuilder ->
-        CommandLineInvocationState.withUpdatedCurrentSelectionBranch parserState
-          (CommandLineInvocationBranch.withAddedBranchDirective
-             selectionBranchBuilder directiveText)
-    | None ->
-        CommandLineInvocationState.withAddedCurrentTargetDirective parserState
-          directiveText
-  in
-  (updatedParserState, remainingTokens)
+  ( updateBranchOrFallback parserState
+      ~onBranch:(fun branch ->
+        CommandLineInvocationBranch.withAddedBranchDirective branch
+          directiveText)
+      ~onNoBranch:(fun state ->
+        CommandLineInvocationState.withAddedCurrentTargetDirective state
+          directiveText),
+    remainingTokens )
 
 let handleAlias parserState token remainingTokens =
   let fieldAlias, remainingTokens =
     CommandLineInvocationShared.valueOfOptionToken token remainingTokens
   in
-  let updatedParserState =
-    match
-      CommandLineInvocationBranch.currentSelectionBranchOfState parserState
-    with
-    | Some selectionBranchBuilder ->
-        CommandLineInvocationState.withUpdatedCurrentSelectionBranch parserState
-          (CommandLineInvocationBranch.withUpdatedBranchFieldAlias
-             selectionBranchBuilder fieldAlias)
-    | None ->
+  ( updateBranchOrFallback parserState
+      ~onBranch:(fun branch ->
+        CommandLineInvocationBranch.withUpdatedBranchFieldAlias branch
+          fieldAlias)
+      ~onNoBranch:(fun _ ->
         raise
           (Invalid_argument
              (Printf.sprintf
                 "--alias requires an existing selection branch.\n\n%s"
-                CommandLineInvocationShared.usageText))
-  in
-  (updatedParserState, remainingTokens)
+                CommandLineInvocationShared.usageText))),
+    remainingTokens )
 
 let handleFragmentDefinition parserState token remainingTokens =
   let fragmentDefinitionText, remainingTokens =
@@ -201,22 +195,17 @@ let handleFieldArgument parserState token remainingTokens =
   let fieldArgumentPair, remainingTokens =
     CommandLineInvocationShared.optionPairOfToken token remainingTokens
   in
-  let updatedParserState =
-    match
-      CommandLineInvocationBranch.currentSelectionBranchOfState parserState
-    with
-    | Some selectionBranchBuilder ->
-        CommandLineInvocationState.withUpdatedCurrentSelectionBranch parserState
-          (CommandLineInvocationBranch.withAddedBranchFieldArgumentPair
-             selectionBranchBuilder fieldArgumentPair)
-    | None ->
+  ( updateBranchOrFallback parserState
+      ~onBranch:(fun branch ->
+        CommandLineInvocationBranch.withAddedBranchFieldArgumentPair branch
+          fieldArgumentPair)
+      ~onNoBranch:(fun _ ->
         raise
           (Invalid_argument
              (Printf.sprintf
                 "Field argument %s requires an existing selection branch.\n\n%s"
-                (fst fieldArgumentPair) CommandLineInvocationShared.usageText))
-  in
-  (updatedParserState, remainingTokens)
+                (fst fieldArgumentPair) CommandLineInvocationShared.usageText))),
+    remainingTokens )
 
 let optionHandlers =
   [
