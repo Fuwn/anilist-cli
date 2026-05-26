@@ -1,4 +1,7 @@
-type operationType = Query | Mutation | Subscription
+type operationType = GraphQlOperation.operationType =
+  | Query
+  | Mutation
+  | Subscription
 
 type fieldSegment = {
   fieldName : string;

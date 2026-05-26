@@ -166,11 +166,6 @@ let selectionSetOfTarget ~capitalizeRootFieldNames ~rootSelectionExpressions
       branchRootSelectionSet;
     ]
 
-let graphQlOperationTypeOfOperationType = function
-  | Query -> GraphQlOperation.Query
-  | Mutation -> GraphQlOperation.Mutation
-  | Subscription -> GraphQlOperation.Subscription
-
 let lowerStructuredFragmentDefinition structuredFragmentDefinition =
   let selectionSet =
     selectionSetOfTarget ~capitalizeRootFieldNames:false
@@ -201,8 +196,7 @@ let lowerOperationDefinition
   in
   let operation =
     GraphQlOperation.make ?name:operationName ~variableDefinitions
-      ~directives:operationDirectiveTexts
-      ~operationType:(graphQlOperationTypeOfOperationType operationType)
+      ~directives:operationDirectiveTexts ~operationType
       ~selectionSet:operationSelectionSet ()
   in
   (operation, valuesOfVariableAssignments variableAssignments)
