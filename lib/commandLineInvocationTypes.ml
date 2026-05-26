@@ -55,41 +55,13 @@ type t = {
   rawFragmentDefinitionTexts : string list;
 }
 
-type selectionBranchBuilder = {
-  builderCurrentSelectionPathSegment : selectionPathSegment;
-  builderPreviousSelectionPathSegments : selectionPathSegment list;
-  builderSelectionExpressions : string list;
-}
-
-type selectionTargetBuilder = {
-  builderRootSelectionExpressions : string list;
-  builderCurrentSelectionBranch : selectionBranchBuilder option;
-  builderSelectionBranches : selectionBranch list;
-}
-
-type operationDefinitionBuilder = {
-  builderOperationType : operationType;
-  builderOperationName : string option;
-  builderVariableDefinitions : string list;
-  builderVariableAssignments : (string * string) list;
-  builderOperationDirectiveTexts : string list;
-  builderOperationSelectionTarget : selectionTargetBuilder;
-  builderDefaultSelectionPathPrefix : selectionPathSegment list;
-}
-
-type structuredFragmentDefinitionBuilder = {
-  builderFragmentName : string;
-  builderFragmentTypeCondition : string;
-  builderFragmentDirectiveTexts : string list;
-  builderFragmentSelectionTarget : selectionTargetBuilder;
-}
-
 type parserState = {
   finalizedOperationDefinitions : operationDefinition list;
-  currentOperationDefinition : operationDefinitionBuilder option;
+  currentOperationDefinition : operationDefinition option;
+  currentDefaultSelectionPathPrefix : selectionPathSegment list;
+  currentBranch : selectionBranch option;
   requestedOperationName : string option;
   finalizedStructuredFragmentDefinitions : structuredFragmentDefinition list;
-  currentStructuredFragmentDefinition :
-    structuredFragmentDefinitionBuilder option;
+  currentStructuredFragmentDefinition : structuredFragmentDefinition option;
   pendingRawFragmentDefinitionTexts : string list;
 }

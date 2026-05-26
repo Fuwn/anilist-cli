@@ -7,16 +7,16 @@ let bareOptionNameOfToken token =
 
 let replaceCurrentSelectionBranchWithSegments parserState resolvedSegments =
   CommandLineInvocationState.withUpdatedCurrentSelectionBranch
-    (CommandLineInvocationState.finalizedCurrentSelectionBranch parserState)
-    (CommandLineInvocationBranch.makeSelectionBranchBuilderFromSegments
+    (CommandLineInvocationState.finalizedCurrentBranch parserState)
+    (CommandLineInvocationBranch.makeSelectionBranchFromSegments
        resolvedSegments)
 
 let withCurrentOperationOrRaise ~optionDescription parserState mapOperation =
   match parserState.currentOperationDefinition with
-  | Some operationDefinitionBuilder ->
+  | Some operationDefinition ->
       CommandLineInvocationState.withUpdatedCurrentOperationDefinition
         parserState
-        (mapOperation operationDefinitionBuilder)
+        (mapOperation operationDefinition)
   | None ->
       raise
         (Invalid_argument
@@ -102,11 +102,8 @@ let handleOperationName parserState token remainingTokens =
     CommandLineInvocationShared.valueOfOptionToken token remainingTokens
   in
   ( withCurrentOperationOrRaise ~optionDescription:"--operation-name" parserState
-      (fun operationDefinitionBuilder ->
-        {
-          operationDefinitionBuilder with
-          builderOperationName = Some operationName;
-        }),
+      (fun operationDefinition ->
+        { operationDefinition with operationName = Some operationName }),
     remainingTokens )
 
 let handleSelectedOperationName parserState token remainingTokens =
@@ -121,12 +118,11 @@ let handleVariableDefinition parserState token remainingTokens =
     CommandLineInvocationShared.valueOfOptionToken token remainingTokens
   in
   ( withCurrentOperationOrRaise ~optionDescription:"--variable-definition"
-      parserState (fun operationDefinitionBuilder ->
+      parserState (fun operationDefinition ->
         {
-          operationDefinitionBuilder with
-          builderVariableDefinitions =
-            operationDefinitionBuilder.builderVariableDefinitions
-            @ [ variableDefinition ];
+          operationDefinition with
+          variableDefinitions =
+            operationDefinition.variableDefinitions @ [ variableDefinition ];
         }),
     remainingTokens )
 
@@ -135,11 +131,11 @@ let handleVariable parserState token remainingTokens =
     CommandLineInvocationShared.valueOfOptionToken token remainingTokens
   in
   ( withCurrentOperationOrRaise ~optionDescription:"--variable" parserState
-      (fun operationDefinitionBuilder ->
+      (fun operationDefinition ->
         {
-          operationDefinitionBuilder with
-          builderVariableAssignments =
-            operationDefinitionBuilder.builderVariableAssignments
+          operationDefinition with
+          variableAssignments =
+            operationDefinition.variableAssignments
             @ [
                 CommandLineInvocationShared.variableAssignmentOfText
                   variableAssignmentText;
@@ -250,13 +246,13 @@ let handlePositionalToken parserState token remainingTokens =
   match
     CommandLineInvocationBranch.currentSelectionBranchOfState parserState
   with
-  | Some selectionBranchBuilder
+  | Some branch
     when CommandLineInvocationBranch.currentDefaultSelectionPathPrefix
            parserState
          = []
-         && selectionBranchBuilder.builderSelectionExpressions <> [] ->
+         && branch.selectionExpressions <> [] ->
       let finalizedParserState =
-        CommandLineInvocationState.finalizedCurrentSelectionBranch parserState
+        CommandLineInvocationState.finalizedCurrentBranch parserState
       in
       let resolvedSegments =
         CommandLineInvocationBranch.resolvedSelectionPathSegmentsOfFieldPath
@@ -264,13 +260,13 @@ let handlePositionalToken parserState token remainingTokens =
       in
       ( CommandLineInvocationState.withUpdatedCurrentSelectionBranch
           finalizedParserState
-          (CommandLineInvocationBranch.makeSelectionBranchBuilderFromSegments
+          (CommandLineInvocationBranch.makeSelectionBranchFromSegments
              resolvedSegments),
         remainingTokens )
-  | Some selectionBranchBuilder ->
+  | Some branch ->
       ( CommandLineInvocationState.withUpdatedCurrentSelectionBranch parserState
           (CommandLineInvocationBranch.withPushedFieldSelectionPathSegment
-             selectionBranchBuilder token),
+             branch token),
         remainingTokens )
   | None -> (
       match parserState.currentOperationDefinition with
@@ -291,8 +287,8 @@ let handlePositionalToken parserState token remainingTokens =
           in
           ( CommandLineInvocationState.withUpdatedCurrentSelectionBranch
               parserState
-              (CommandLineInvocationBranch
-               .makeSelectionBranchBuilderFromSegments resolvedSegments),
+              (CommandLineInvocationBranch.makeSelectionBranchFromSegments
+                 resolvedSegments),
             remainingTokens ))
 
 let rec parseRemainingArguments parserState = function

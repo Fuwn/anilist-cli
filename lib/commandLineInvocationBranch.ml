@@ -35,125 +35,99 @@ let fieldSegmentsOfPath fieldPath =
   |> List.map (fun segmentText ->
       FieldSegment (fieldPathSegmentOfText segmentText))
 
-let orderedSelectionPathSegmentsOfBranchBuilder selectionBranchBuilder =
-  List.rev
-    (selectionBranchBuilder.builderCurrentSelectionPathSegment
-   :: selectionBranchBuilder.builderPreviousSelectionPathSegments)
+let branchEndsInFragmentSpread branch =
+  match List.rev branch.selectionPathSegments with
+  | FragmentSpreadSegment _ :: _ -> true
+  | (FieldSegment _ | InlineFragmentSegment _) :: _ | [] -> false
 
-let branchBuilderEndsInFragmentSpread selectionBranchBuilder =
-  match selectionBranchBuilder.builderCurrentSelectionPathSegment with
-  | FragmentSpreadSegment _ -> true
-  | FieldSegment _ | InlineFragmentSegment _ -> false
+let makeSelectionBranchFromSegments segments =
+  if segments = [] then
+    raise
+      (Invalid_argument
+         (Printf.sprintf "Selection path cannot be empty.\n\n%s"
+            CommandLineInvocationShared.usageText))
+  else { selectionPathSegments = segments; selectionExpressions = [] }
 
-let makeSelectionBranchBuilderFromSegments selectionPathSegments =
-  match List.rev selectionPathSegments with
-  | [] ->
-      raise
-        (Invalid_argument
-           (Printf.sprintf "Selection path cannot be empty.\n\n%s"
-              CommandLineInvocationShared.usageText))
-  | builderCurrentSelectionPathSegment :: builderPreviousSelectionPathSegments
-    ->
-      {
-        builderCurrentSelectionPathSegment;
-        builderPreviousSelectionPathSegments;
-        builderSelectionExpressions = [];
-      }
+let makeSelectionBranchFromFieldPath fieldPath =
+  fieldPath |> fieldSegmentsOfPath |> makeSelectionBranchFromSegments
 
-let makeSelectionBranchBuilderFromFieldPath fieldPath =
-  fieldPath |> fieldSegmentsOfPath |> makeSelectionBranchBuilderFromSegments
+let updateLastSegment branch mapSegment =
+  match List.rev branch.selectionPathSegments with
+  | [] -> raise (Invalid_argument "Empty selection branch")
+  | last :: rest ->
+      { branch with selectionPathSegments = List.rev (mapSegment last :: rest) }
 
-let withAddedFieldArgumentPair fieldSegment fieldArgumentPair =
-  {
-    fieldSegment with
-    fieldArgumentPairs = fieldSegment.fieldArgumentPairs @ [ fieldArgumentPair ];
-  }
-
-let withUpdatedFieldAlias fieldSegment fieldAlias =
-  {
-    fieldSegment with
-    fieldAlias = Some (CommandLineInvocationShared.normalizedAlias fieldAlias);
-  }
-
-let withAddedBranchSelectionExpression selectionBranchBuilder
-    selectionExpression =
-  if branchBuilderEndsInFragmentSpread selectionBranchBuilder then
+let withAddedBranchSelectionExpression branch selectionExpression =
+  if branchEndsInFragmentSpread branch then
     raise
       (Invalid_argument
          (Printf.sprintf "Fragment spreads cannot define a selection set.\n\n%s"
             CommandLineInvocationShared.usageText))
   else
     {
-      selectionBranchBuilder with
-      builderSelectionExpressions =
-        selectionBranchBuilder.builderSelectionExpressions
-        @ [ selectionExpression ];
+      branch with
+      selectionExpressions =
+        branch.selectionExpressions @ [ selectionExpression ];
     }
 
-let withPushedFieldSelectionPathSegment selectionBranchBuilder fieldName =
-  if branchBuilderEndsInFragmentSpread selectionBranchBuilder then
+let withPushedFieldSelectionPathSegment branch fieldName =
+  if branchEndsInFragmentSpread branch then
     raise
       (Invalid_argument
          (Printf.sprintf
             "Fragment spreads cannot contain child selections.\n\n%s"
             CommandLineInvocationShared.usageText))
   else
-    match List.rev (fieldSegmentsOfPath fieldName) with
-    | [] ->
+    let newSegments = fieldSegmentsOfPath fieldName in
+    if newSegments = [] then
+      raise
+        (Invalid_argument
+           (Printf.sprintf "Selection path cannot be empty.\n\n%s"
+              CommandLineInvocationShared.usageText))
+    else
+      {
+        branch with
+        selectionPathSegments = branch.selectionPathSegments @ newSegments;
+      }
+
+let withAddedBranchFieldArgumentPair branch fieldArgumentPair =
+  updateLastSegment branch (function
+    | FieldSegment fieldSegment ->
+        FieldSegment
+          {
+            fieldSegment with
+            fieldArgumentPairs =
+              fieldSegment.fieldArgumentPairs @ [ fieldArgumentPair ];
+          }
+    | InlineFragmentSegment _ | FragmentSpreadSegment _ ->
         raise
           (Invalid_argument
-             (Printf.sprintf "Selection path cannot be empty.\n\n%s"
-                CommandLineInvocationShared.usageText))
-    | builderCurrentSelectionPathSegment :: builderPreviousSelectionPathSegments
-      ->
-        {
-          builderCurrentSelectionPathSegment;
-          builderPreviousSelectionPathSegments =
-            builderPreviousSelectionPathSegments
-            @ [ selectionBranchBuilder.builderCurrentSelectionPathSegment ]
-            @ selectionBranchBuilder.builderPreviousSelectionPathSegments;
-          builderSelectionExpressions =
-            selectionBranchBuilder.builderSelectionExpressions;
-        }
+             (Printf.sprintf
+                "Field arguments require the current selection branch to end \
+                 in a field.\n\n\
+                 %s"
+                CommandLineInvocationShared.usageText)))
 
-let withAddedBranchFieldArgumentPair selectionBranchBuilder fieldArgumentPair =
-  match selectionBranchBuilder.builderCurrentSelectionPathSegment with
-  | FieldSegment fieldSegment ->
-      {
-        selectionBranchBuilder with
-        builderCurrentSelectionPathSegment =
-          FieldSegment
-            (withAddedFieldArgumentPair fieldSegment fieldArgumentPair);
-      }
-  | InlineFragmentSegment _ | FragmentSpreadSegment _ ->
-      raise
-        (Invalid_argument
-           (Printf.sprintf
-              "Field arguments require the current selection branch to end in \
-               a field.\n\n\
-               %s"
-              CommandLineInvocationShared.usageText))
+let withUpdatedBranchFieldAlias branch fieldAlias =
+  updateLastSegment branch (function
+    | FieldSegment fieldSegment ->
+        FieldSegment
+          {
+            fieldSegment with
+            fieldAlias =
+              Some (CommandLineInvocationShared.normalizedAlias fieldAlias);
+          }
+    | InlineFragmentSegment _ | FragmentSpreadSegment _ ->
+        raise
+          (Invalid_argument
+             (Printf.sprintf
+                "--alias requires the current selection branch to end in a \
+                 field.\n\n\
+                 %s"
+                CommandLineInvocationShared.usageText)))
 
-let withUpdatedBranchFieldAlias selectionBranchBuilder fieldAlias =
-  match selectionBranchBuilder.builderCurrentSelectionPathSegment with
-  | FieldSegment fieldSegment ->
-      {
-        selectionBranchBuilder with
-        builderCurrentSelectionPathSegment =
-          FieldSegment (withUpdatedFieldAlias fieldSegment fieldAlias);
-      }
-  | InlineFragmentSegment _ | FragmentSpreadSegment _ ->
-      raise
-        (Invalid_argument
-           (Printf.sprintf
-              "--alias requires the current selection branch to end in a \
-               field.\n\n\
-               %s"
-              CommandLineInvocationShared.usageText))
-
-let withAddedBranchDirective selectionBranchBuilder directiveText =
-  let updatedCurrentSegment =
-    match selectionBranchBuilder.builderCurrentSelectionPathSegment with
+let withAddedBranchDirective branch directiveText =
+  updateLastSegment branch (function
     | FieldSegment fieldSegment ->
         FieldSegment
           {
@@ -176,33 +150,12 @@ let withAddedBranchDirective selectionBranchBuilder directiveText =
             fragmentSpreadDirectiveTexts =
               fragmentSpreadSegment.fragmentSpreadDirectiveTexts
               @ [ directiveText ];
-          }
-  in
-  {
-    selectionBranchBuilder with
-    builderCurrentSelectionPathSegment = updatedCurrentSegment;
-  }
+          })
 
-let currentSelectionBranchOfState parserState =
-  match parserState.currentStructuredFragmentDefinition with
-  | Some fragmentDefinitionBuilder ->
-      fragmentDefinitionBuilder.builderFragmentSelectionTarget
-        .builderCurrentSelectionBranch
-  | None -> (
-      match parserState.currentOperationDefinition with
-      | Some operationDefinitionBuilder ->
-          operationDefinitionBuilder.builderOperationSelectionTarget
-            .builderCurrentSelectionBranch
-      | None -> None)
+let currentSelectionBranchOfState parserState = parserState.currentBranch
 
 let currentDefaultSelectionPathPrefix parserState =
-  match parserState.currentStructuredFragmentDefinition with
-  | Some _ -> []
-  | None -> (
-      match parserState.currentOperationDefinition with
-      | Some operationDefinitionBuilder ->
-          operationDefinitionBuilder.builderDefaultSelectionPathPrefix
-      | None -> [])
+  parserState.currentDefaultSelectionPathPrefix
 
 let ensureSelectionPathCanAcceptChildren selectionPathSegments =
   match List.rev selectionPathSegments with
@@ -212,7 +165,7 @@ let ensureSelectionPathCanAcceptChildren selectionPathSegments =
            (Printf.sprintf
               "Fragment spreads cannot contain child selections.\n\n%s"
               CommandLineInvocationShared.usageText))
-  | FieldSegment _ :: _ | InlineFragmentSegment _ :: _ | [] ->
+  | (FieldSegment _ | InlineFragmentSegment _) :: _ | [] ->
       selectionPathSegments
 
 let classifiedBranchPath pathText =
@@ -233,10 +186,9 @@ let classifiedBranchPath pathText =
   else (`Default, pathText)
 
 let currentBranchSegmentsOrRaise parserState ~requiredMessage =
-  match currentSelectionBranchOfState parserState with
-  | Some selectionBranchBuilder ->
-      orderedSelectionPathSegmentsOfBranchBuilder selectionBranchBuilder
-      |> ensureSelectionPathCanAcceptChildren
+  match parserState.currentBranch with
+  | Some branch ->
+      ensureSelectionPathCanAcceptChildren branch.selectionPathSegments
   | None ->
       raise
         (Invalid_argument
@@ -253,11 +205,10 @@ let parentSegmentsAndBareText parserState ~currentBranchRequiredMessage pathText
   | `Absolute, bareText -> ([], bareText)
   | `Default, bareText ->
       let parentSegments =
-        match currentSelectionBranchOfState parserState with
-        | Some selectionBranchBuilder ->
-            orderedSelectionPathSegmentsOfBranchBuilder selectionBranchBuilder
-            |> ensureSelectionPathCanAcceptChildren
-        | None -> currentDefaultSelectionPathPrefix parserState
+        match parserState.currentBranch with
+        | Some branch ->
+            ensureSelectionPathCanAcceptChildren branch.selectionPathSegments
+        | None -> parserState.currentDefaultSelectionPathPrefix
       in
       (parentSegments, bareText)
 
@@ -279,7 +230,7 @@ let resolvedSelectionPathSegmentsOfFieldPath parserState fieldPath =
       @ nonemptyFieldSegments bareFieldPath
   | `Absolute, bareFieldPath -> nonemptyFieldSegments bareFieldPath
   | `Default, bareFieldPath ->
-      currentDefaultSelectionPathPrefix parserState
+      parserState.currentDefaultSelectionPathPrefix
       @ nonemptyFieldSegments bareFieldPath
 
 let resolvedSelectionPathSegmentsOfInlineFragment parserState
