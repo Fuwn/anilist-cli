@@ -152,7 +152,7 @@ let variableAssignmentOfText variableAssignmentText =
              (Printf.sprintf
                 "Variable names must use GraphQL variable syntax.\n\n%s"
                 usageText))
-      else if StringPrefix.valueHasPrefix ~prefix:"var:" rawValue then
+      else if String.starts_with ~prefix:"var:" rawValue then
         raise
           (Invalid_argument
              (Printf.sprintf

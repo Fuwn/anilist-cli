@@ -171,14 +171,14 @@ let ensureSelectionPathCanAcceptChildren selectionPathSegments =
 
 let classifiedBranchPath pathText =
   if
-    StringPrefix.valueHasPrefix
+    String.starts_with
       ~prefix:CommandLineInvocationShared.currentBranchPathPrefix pathText
   then
     ( `Relative,
       StringPrefix.valueWithoutPrefix
         ~prefix:CommandLineInvocationShared.currentBranchPathPrefix pathText )
   else if
-    StringPrefix.valueHasPrefix
+    String.starts_with
       ~prefix:CommandLineInvocationShared.absoluteBranchPathPrefix pathText
   then
     ( `Absolute,

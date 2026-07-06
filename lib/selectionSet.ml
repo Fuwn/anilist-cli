@@ -136,11 +136,10 @@ let rec fieldOfPathSegments = function
            ~selectionSet:[ childField ] ())
 
 let scopeAndFieldPathOfCliField fieldPath =
-  if StringPrefix.valueHasPrefix ~prefix:rootFieldPathPrefix fieldPath then
+  if String.starts_with ~prefix:rootFieldPathPrefix fieldPath then
     ( `Root,
       StringPrefix.valueWithoutPrefix ~prefix:rootFieldPathPrefix fieldPath )
-  else if StringPrefix.valueHasPrefix ~prefix:rootSelectionPathPrefix fieldPath
-  then
+  else if String.starts_with ~prefix:rootSelectionPathPrefix fieldPath then
     ( `Root,
       StringPrefix.valueWithoutPrefix ~prefix:rootSelectionPathPrefix fieldPath
     )
@@ -173,13 +172,12 @@ let selectionOfInlineFragmentPath ~capitalizeRootFieldNames inlineFragmentPath =
 let selectionsOfScopedPaths ~capitalizeRootFieldNames scopedPaths =
   scopedPaths |> List.map snd
   |> List.map (fun scopedPath ->
-      if StringPrefix.valueHasPrefix ~prefix:fragmentSpreadPrefix scopedPath
-      then
+      if String.starts_with ~prefix:fragmentSpreadPrefix scopedPath then
         let spreadTarget =
           StringPrefix.valueWithoutPrefix ~prefix:fragmentSpreadPrefix
             scopedPath
         in
-        if StringPrefix.valueHasPrefix ~prefix:"on:" spreadTarget then
+        if String.starts_with ~prefix:"on:" spreadTarget then
           let inlineFragmentPath =
             StringPrefix.valueWithoutPrefix ~prefix:"on:" spreadTarget
           in

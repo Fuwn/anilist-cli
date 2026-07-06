@@ -85,13 +85,13 @@ let rawValueLooksLikeFloat rawValue =
   || String.contains rawValue 'E'
 
 let valueOfRawValue rawValue =
-  if StringPrefix.valueHasPrefix ~prefix:stringPrefix rawValue then
+  if String.starts_with ~prefix:stringPrefix rawValue then
     String (StringPrefix.valueWithoutPrefix ~prefix:stringPrefix rawValue)
-  else if StringPrefix.valueHasPrefix ~prefix:enumPrefix rawValue then
+  else if String.starts_with ~prefix:enumPrefix rawValue then
     Enum (StringPrefix.valueWithoutPrefix ~prefix:enumPrefix rawValue)
-  else if StringPrefix.valueHasPrefix ~prefix:variablePrefix rawValue then
+  else if String.starts_with ~prefix:variablePrefix rawValue then
     Variable (StringPrefix.valueWithoutPrefix ~prefix:variablePrefix rawValue)
-  else if StringPrefix.valueHasPrefix ~prefix:jsonPrefix rawValue then
+  else if String.starts_with ~prefix:jsonPrefix rawValue then
     Json
       (Yojson.Safe.from_string
          (StringPrefix.valueWithoutPrefix ~prefix:jsonPrefix rawValue))
