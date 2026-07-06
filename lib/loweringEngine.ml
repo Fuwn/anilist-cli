@@ -150,55 +150,24 @@ let lowerOperationDefinition
   in
   (operation, valuesOfVariableAssignments variableAssignments)
 
-let rec uniqueNames seenNames = function
-  | [] -> true
-  | name :: remainingNames ->
-      if List.mem name seenNames then false
-      else uniqueNames (name :: seenNames) remainingNames
-
 let selectedOperationAndVariables operations selectedOperationName =
-  match (operations, selectedOperationName) with
-  | [ (_, variableAssignments) ], None -> (None, variableAssignments)
-  | [ (operation, variableAssignments) ], Some selectedOperationName -> (
-      match operation.GraphQlOperation.name with
-      | Some operationName when operationName = selectedOperationName ->
-          (Some selectedOperationName, variableAssignments)
-      | Some _ | None ->
-          raise
-            (Invalid_argument
-               "Selected operation name does not match the document"))
-  | _, None ->
-      raise
-        (Invalid_argument
-           "Multiple-operation documents require an executed operation name")
-  | operations, Some selectedOperationName -> (
-      match
+  match selectedOperationName with
+  | None -> (None, snd (List.hd operations))
+  | Some selectedOperationName ->
+      let _, variableAssignments =
         operations
-        |> List.find_opt (fun (operation, _) ->
+        |> List.find (fun (operation, _) ->
             operation.GraphQlOperation.name = Some selectedOperationName)
-      with
-      | Some (_, variableAssignments) ->
-          (Some selectedOperationName, variableAssignments)
-      | None ->
-          raise
-            (Invalid_argument
-               "Selected operation name does not match the document"))
+      in
+      (Some selectedOperationName, variableAssignments)
 
+(* Assumes a validated invocation (see CommandLineInvocationValidation):
+   operation names are unique, and the selected operation name exists whenever
+   the document requires one. *)
 let lower (invocation : CommandLineInvocationTypes.t) =
   let loweredOperations =
     invocation.operationDefinitions |> List.map lowerOperationDefinition
   in
-  let operationNames =
-    loweredOperations
-    |> List.filter_map (fun (operation, _) -> operation.GraphQlOperation.name)
-  in
-  if List.length loweredOperations > 1 then (
-    if List.length operationNames <> List.length loweredOperations then
-      raise
-        (Invalid_argument
-           "Multiple-operation documents require every operation to be named");
-    if not (uniqueNames [] operationNames) then
-      raise (Invalid_argument "Operation names must be unique"));
   let selectedOperationName, loweredVariableAssignments =
     selectedOperationAndVariables loweredOperations
       invocation.CommandLineInvocationTypes.selectedOperationName
