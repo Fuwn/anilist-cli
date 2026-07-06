@@ -34,10 +34,6 @@ let runProtected task =
 let run ~headers invocation =
   runProtected (fun () ->
       let loweredRequest = LoweringEngine.lower invocation in
-      if loweredRequest.LoweringEngine.operations = [] then
-        printAndExit stderr 1
-          (Printf.sprintf "Selection set cannot be empty.\n\n%s"
-             CommandLineInvocationShared.usageText);
       let query =
         loweredRequest |> LoweringEngine.graphQlQueryOfRequest
         |> GraphQlQuery.render
