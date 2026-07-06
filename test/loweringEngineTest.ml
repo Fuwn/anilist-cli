@@ -69,23 +69,31 @@ let structuredFragmentDefinition ?(directives = []) fragmentName
     fragmentSelectionBranches;
   }
 
+let invocationOfOperations ?selectedOperationName
+    ?(structuredFragmentDefinitions = []) ?(rawFragmentDefinitionTexts = [])
+    operationDefinitions =
+  {
+    CommandLineInvocationTypes.operationDefinitions;
+    selectedOperationName;
+    structuredFragmentDefinitions;
+    rawFragmentDefinitionTexts;
+  }
+
 let queryOfLoweredRequest loweredRequest =
   loweredRequest |> LoweringEngine.graphQlQueryOfRequest |> GraphQlQuery.render
 
 let testSingleFieldSelectionShorthand () =
   let request =
     LoweringEngine.lower
-      ~operationDefinitions:
-        [
-          operationDefinition []
-            [
-              selectionBranch
-                [ fieldSegment "user" [ ("name", "fuwn") ] ]
-                [ "id,name" ];
-            ];
-        ]
-      ~selectedOperationName:None ~structuredFragmentDefinitions:[]
-      ~rawFragmentDefinitionTexts:[]
+      (invocationOfOperations
+         [
+           operationDefinition []
+             [
+               selectionBranch
+                 [ fieldSegment "user" [ ("name", "fuwn") ] ]
+                 [ "id,name" ];
+             ];
+         ])
   in
   assertEqual "query {\n  User(name: \"fuwn\") {\n    id\n    name\n  }\n}"
     (queryOfLoweredRequest request)
@@ -93,34 +101,32 @@ let testSingleFieldSelectionShorthand () =
 let testExplicitOperationWithMultipleRootFields () =
   let request =
     LoweringEngine.lower
-      ~operationDefinitions:
-        [
-          ({
-             CommandLineInvocationTypes.operationType =
-               CommandLineInvocationTypes.Query;
-             CommandLineInvocationTypes.operationName = Some "Viewer";
-             CommandLineInvocationTypes.variableDefinitions =
-               [ "$userName: String!" ];
-             CommandLineInvocationTypes.variableAssignments =
-               [ ("userName", "string:fuwn") ];
-             CommandLineInvocationTypes.operationDirectiveTexts =
-               [ "cacheControl(maxAge: 60)" ];
-             CommandLineInvocationTypes.rootSelectionExpressions =
-               [ "viewer.id" ];
-             CommandLineInvocationTypes.selectionBranches =
-               [
-                 selectionBranch
-                   [ fieldSegment "user" [ ("name", "var:userName") ] ]
-                   [ "id,name" ];
-                 selectionBranch
-                   [ fieldSegment "media" [ ("id", "42") ] ]
-                   [ "title.romaji" ];
-               ];
-           }
-            : CommandLineInvocationTypes.operationDefinition);
-        ]
-      ~selectedOperationName:(Some "Viewer") ~structuredFragmentDefinitions:[]
-      ~rawFragmentDefinitionTexts:[]
+      (invocationOfOperations ~selectedOperationName:"Viewer"
+         [
+           ({
+              CommandLineInvocationTypes.operationType =
+                CommandLineInvocationTypes.Query;
+              CommandLineInvocationTypes.operationName = Some "Viewer";
+              CommandLineInvocationTypes.variableDefinitions =
+                [ "$userName: String!" ];
+              CommandLineInvocationTypes.variableAssignments =
+                [ ("userName", "string:fuwn") ];
+              CommandLineInvocationTypes.operationDirectiveTexts =
+                [ "cacheControl(maxAge: 60)" ];
+              CommandLineInvocationTypes.rootSelectionExpressions =
+                [ "viewer.id" ];
+              CommandLineInvocationTypes.selectionBranches =
+                [
+                  selectionBranch
+                    [ fieldSegment "user" [ ("name", "var:userName") ] ]
+                    [ "id,name" ];
+                  selectionBranch
+                    [ fieldSegment "media" [ ("id", "42") ] ]
+                    [ "title.romaji" ];
+                ];
+            }
+             : CommandLineInvocationTypes.operationDefinition);
+         ])
   in
   assertEqual
     "query Viewer($userName: String!) @cacheControl(maxAge: 60) {\n\
@@ -142,22 +148,20 @@ let testExplicitOperationWithMultipleRootFields () =
 let testFieldAliasAndDirectiveLowering () =
   let request =
     LoweringEngine.lower
-      ~operationDefinitions:
-        [
-          operationDefinition []
-            [
-              selectionBranch
-                [
-                  fieldSegment ~alias:"account"
-                    ~directives:[ "include(if: $withUser)" ]
-                    "user"
-                    [ ("name", "fuwn") ];
-                ]
-                [ "id,name" ];
-            ];
-        ]
-      ~selectedOperationName:None ~structuredFragmentDefinitions:[]
-      ~rawFragmentDefinitionTexts:[]
+      (invocationOfOperations
+         [
+           operationDefinition []
+             [
+               selectionBranch
+                 [
+                   fieldSegment ~alias:"account"
+                     ~directives:[ "include(if: $withUser)" ]
+                     "user"
+                     [ ("name", "fuwn") ];
+                 ]
+                 [ "id,name" ];
+             ];
+         ])
   in
   assertEqual
     "query {\n\
@@ -171,25 +175,23 @@ let testFieldAliasAndDirectiveLowering () =
 let testNestedFieldBranchLowering () =
   let request =
     LoweringEngine.lower
-      ~operationDefinitions:
-        [
-          operationDefinition []
-            [
-              selectionBranch
-                [
-                  fieldSegment "media" [ ("type", "enum:ANIME"); ("id", "42") ];
-                ]
-                [ "id"; "title.romaji" ];
-              selectionBranch
-                [
-                  fieldSegment "media" [ ("type", "enum:ANIME"); ("id", "42") ];
-                  fieldSegment "cover-image" [];
-                ]
-                [ "extra-large" ];
-            ];
-        ]
-      ~selectedOperationName:None ~structuredFragmentDefinitions:[]
-      ~rawFragmentDefinitionTexts:[]
+      (invocationOfOperations
+         [
+           operationDefinition []
+             [
+               selectionBranch
+                 [
+                   fieldSegment "media" [ ("type", "enum:ANIME"); ("id", "42") ];
+                 ]
+                 [ "id"; "title.romaji" ];
+               selectionBranch
+                 [
+                   fieldSegment "media" [ ("type", "enum:ANIME"); ("id", "42") ];
+                   fieldSegment "cover-image" [];
+                 ]
+                 [ "extra-large" ];
+             ];
+         ])
   in
   assertEqual
     "query {\n\
@@ -208,22 +210,20 @@ let testNestedFieldBranchLowering () =
 let testStructuredFragmentDefinitionLowering () =
   let request =
     LoweringEngine.lower
-      ~operationDefinitions:
-        [
-          operationDefinition []
-            [
-              selectionBranch
-                [ fieldSegment "media" [ ("id", "1") ] ]
-                [ "id"; "...mediaCore" ];
-            ];
-        ]
-      ~selectedOperationName:None
-      ~structuredFragmentDefinitions:
-        [
-          structuredFragmentDefinition "mediaCore" "Media" [ "popularity" ]
-            [ selectionBranch [ fieldSegment "title" [] ] [ "romaji" ] ];
-        ]
-      ~rawFragmentDefinitionTexts:[]
+      (invocationOfOperations
+         ~structuredFragmentDefinitions:
+           [
+             structuredFragmentDefinition "mediaCore" "Media" [ "popularity" ]
+               [ selectionBranch [ fieldSegment "title" [] ] [ "romaji" ] ];
+           ]
+         [
+           operationDefinition []
+             [
+               selectionBranch
+                 [ fieldSegment "media" [ ("id", "1") ] ]
+                 [ "id"; "...mediaCore" ];
+             ];
+         ])
   in
   assertEqual
     "query {\n\
@@ -243,30 +243,28 @@ let testStructuredFragmentDefinitionLowering () =
 let testInlineFragmentBranchLowering () =
   let request =
     LoweringEngine.lower
-      ~operationDefinitions:
-        [
-          operationDefinition []
-            [
-              selectionBranch [ fieldSegment "media" [ ("id", "1") ] ] [ "id" ];
-              selectionBranch
-                [
-                  fieldSegment "media" [ ("id", "1") ];
-                  inlineFragmentSegment ~directives:[ "skip(if: $skipAnime)" ]
-                    "Anime";
-                  fieldSegment "title" [];
-                ]
-                [ "romaji" ];
-              selectionBranch
-                [
-                  fieldSegment "media" [ ("id", "1") ];
-                  inlineFragmentSegment "Anime";
-                  fieldSegment "relations" [ ("type", "enum:SEQUEL") ];
-                ]
-                [ "edges.node.id" ];
-            ];
-        ]
-      ~selectedOperationName:None ~structuredFragmentDefinitions:[]
-      ~rawFragmentDefinitionTexts:[]
+      (invocationOfOperations
+         [
+           operationDefinition []
+             [
+               selectionBranch [ fieldSegment "media" [ ("id", "1") ] ] [ "id" ];
+               selectionBranch
+                 [
+                   fieldSegment "media" [ ("id", "1") ];
+                   inlineFragmentSegment ~directives:[ "skip(if: $skipAnime)" ]
+                     "Anime";
+                   fieldSegment "title" [];
+                 ]
+                 [ "romaji" ];
+               selectionBranch
+                 [
+                   fieldSegment "media" [ ("id", "1") ];
+                   inlineFragmentSegment "Anime";
+                   fieldSegment "relations" [ ("type", "enum:SEQUEL") ];
+                 ]
+                 [ "edges.node.id" ];
+             ];
+         ])
   in
   assertEqual
     "query {\n\
@@ -293,24 +291,25 @@ let testInlineFragmentBranchLowering () =
 let testFragmentSpreadDirectiveLowering () =
   let request =
     LoweringEngine.lower
-      ~operationDefinitions:
-        [
-          operationDefinition []
-            [
-              selectionBranch
-                [
-                  fieldSegment "media" [ ("id", "1") ];
-                  fragmentSpreadSegment
-                    ~directives:[ "include(if: $withCore)" ]
-                    "mediaCore";
-                ]
-                [];
-            ];
-        ]
-      ~selectedOperationName:None
-      ~structuredFragmentDefinitions:
-        [ structuredFragmentDefinition "mediaCore" "Media" [ "popularity" ] [] ]
-      ~rawFragmentDefinitionTexts:[]
+      (invocationOfOperations
+         ~structuredFragmentDefinitions:
+           [
+             structuredFragmentDefinition "mediaCore" "Media" [ "popularity" ]
+               [];
+           ]
+         [
+           operationDefinition []
+             [
+               selectionBranch
+                 [
+                   fieldSegment "media" [ ("id", "1") ];
+                   fragmentSpreadSegment
+                     ~directives:[ "include(if: $withCore)" ]
+                     "mediaCore";
+                 ]
+                 [];
+             ];
+         ])
   in
   assertEqual
     "query {\n\
@@ -326,20 +325,22 @@ let testFragmentSpreadDirectiveLowering () =
 let testRawAndStructuredFragmentsCoexist () =
   let request =
     LoweringEngine.lower
-      ~operationDefinitions:
-        [
-          operationDefinition []
-            [
-              selectionBranch
-                [ fieldSegment "media" [ ("id", "1") ] ]
-                [ "...mediaCore"; "...legacyFragment" ];
-            ];
-        ]
-      ~selectedOperationName:None
-      ~structuredFragmentDefinitions:
-        [ structuredFragmentDefinition "mediaCore" "Media" [ "popularity" ] [] ]
-      ~rawFragmentDefinitionTexts:
-        [ "fragment legacyFragment on Media { favourites }" ]
+      (invocationOfOperations
+         ~structuredFragmentDefinitions:
+           [
+             structuredFragmentDefinition "mediaCore" "Media" [ "popularity" ]
+               [];
+           ]
+         ~rawFragmentDefinitionTexts:
+           [ "fragment legacyFragment on Media { favourites }" ]
+         [
+           operationDefinition []
+             [
+               selectionBranch
+                 [ fieldSegment "media" [ ("id", "1") ] ]
+                 [ "...mediaCore"; "...legacyFragment" ];
+             ];
+         ])
   in
   assertEqual
     "query {\n\
@@ -357,30 +358,28 @@ let testRawAndStructuredFragmentsCoexist () =
 let testMultipleOperationDocumentLowering () =
   let request =
     LoweringEngine.lower
-      ~operationDefinitions:
-        [
-          ({
-             CommandLineInvocationTypes.operationType =
-               CommandLineInvocationTypes.Query;
-             CommandLineInvocationTypes.operationName = Some "Viewer";
-             CommandLineInvocationTypes.variableDefinitions = [];
-             CommandLineInvocationTypes.variableAssignments = [];
-             CommandLineInvocationTypes.operationDirectiveTexts =
-               [ "cacheControl(maxAge: 60)" ];
-             CommandLineInvocationTypes.rootSelectionExpressions =
-               [ "viewer.id" ];
-             CommandLineInvocationTypes.selectionBranches = [];
-           }
-            : CommandLineInvocationTypes.operationDefinition);
-          operationDefinition ~operationName:"UserLookup" []
-            [
-              selectionBranch
-                [ fieldSegment "user" [ ("name", "fuwn") ] ]
-                [ "id,name" ];
-            ];
-        ]
-      ~selectedOperationName:(Some "UserLookup")
-      ~structuredFragmentDefinitions:[] ~rawFragmentDefinitionTexts:[]
+      (invocationOfOperations ~selectedOperationName:"UserLookup"
+         [
+           ({
+              CommandLineInvocationTypes.operationType =
+                CommandLineInvocationTypes.Query;
+              CommandLineInvocationTypes.operationName = Some "Viewer";
+              CommandLineInvocationTypes.variableDefinitions = [];
+              CommandLineInvocationTypes.variableAssignments = [];
+              CommandLineInvocationTypes.operationDirectiveTexts =
+                [ "cacheControl(maxAge: 60)" ];
+              CommandLineInvocationTypes.rootSelectionExpressions =
+                [ "viewer.id" ];
+              CommandLineInvocationTypes.selectionBranches = [];
+            }
+             : CommandLineInvocationTypes.operationDefinition);
+           operationDefinition ~operationName:"UserLookup" []
+             [
+               selectionBranch
+                 [ fieldSegment "user" [ ("name", "fuwn") ] ]
+                 [ "id,name" ];
+             ];
+         ])
   in
   assertEqual
     "query Viewer @cacheControl(maxAge: 60) {\n\
@@ -510,17 +509,15 @@ let testInlineFragmentsRequireSelections () =
   try
     ignore
       (LoweringEngine.lower
-         ~operationDefinitions:
-           [
-             operationDefinition []
-               [
-                 selectionBranch
-                   [ fieldSegment "media" [ ("id", "1") ] ]
-                   [ "...on:Media" ];
-               ];
-           ]
-         ~selectedOperationName:None ~structuredFragmentDefinitions:[]
-         ~rawFragmentDefinitionTexts:[]);
+         (invocationOfOperations
+            [
+              operationDefinition []
+                [
+                  selectionBranch
+                    [ fieldSegment "media" [ ("id", "1") ] ]
+                    [ "...on:Media" ];
+                ];
+            ]));
     failwith "Expected inline fragment validation failure"
   with Invalid_argument _ -> ()
 

@@ -1,3 +1,4 @@
+open Anilist
 open Lwt.Infix
 
 let printAndExit channel exitCode message =
@@ -8,7 +9,7 @@ let printAndExit channel exitCode message =
 
 let printResponse statusCode responseBody =
   let printableResponse =
-    Anilist.GraphQlTransport.prettyPrintedJsonOrOriginal responseBody
+    GraphQlTransport.prettyPrintedJsonOrOriginal responseBody
   in
   if statusCode >= 200 && statusCode < 300 then (
     print_endline printableResponse;
@@ -18,9 +19,9 @@ let printResponse statusCode responseBody =
     Lwt.return 1)
 
 let executeQuery ~headers ~operationName ~variables ~query =
-  let endpoint = Anilist.GraphQlTransport.endpointOfEnvironment () in
-  Anilist.GraphQlTransport.executeQuery ~operationName ~variables ~headers
-    ~endpoint ~query
+  let endpoint = GraphQlTransport.endpointOfEnvironment () in
+  GraphQlTransport.executeQuery ~operationName ~variables ~headers ~endpoint
+    ~query
   >>= fun (statusCode, responseBody) -> printResponse statusCode responseBody
 
 let runProtected task =
@@ -32,86 +33,68 @@ let runProtected task =
 
 let run ~headers invocation =
   runProtected (fun () ->
-      let loweredRequest =
-        Anilist.LoweringEngine.lower
-          ~operationDefinitions:
-            invocation.Anilist.CommandLineInvocationTypes.operationDefinitions
-          ~selectedOperationName:
-            invocation.Anilist.CommandLineInvocationTypes.selectedOperationName
-          ~structuredFragmentDefinitions:
-            invocation
-              .Anilist.CommandLineInvocationTypes.structuredFragmentDefinitions
-          ~rawFragmentDefinitionTexts:
-            invocation
-              .Anilist.CommandLineInvocationTypes.rawFragmentDefinitionTexts
-      in
-      if loweredRequest.Anilist.LoweringEngine.operations = [] then
+      let loweredRequest = LoweringEngine.lower invocation in
+      if loweredRequest.LoweringEngine.operations = [] then
         printAndExit stderr 1
           (Printf.sprintf "Selection set cannot be empty.\n\n%s"
-             Anilist.CommandLineInvocationShared.usageText);
+             CommandLineInvocationShared.usageText);
       let query =
-        loweredRequest |> Anilist.LoweringEngine.graphQlQueryOfRequest
-        |> Anilist.GraphQlQuery.render
+        loweredRequest |> LoweringEngine.graphQlQueryOfRequest
+        |> GraphQlQuery.render
       in
       let variables =
-        match
-          loweredRequest.Anilist.LoweringEngine.loweredVariableAssignments
-        with
+        match loweredRequest.LoweringEngine.loweredVariableAssignments with
         | [] -> None
         | variableAssignments ->
             Some
               (`Assoc
                  (variableAssignments
                  |> List.map (fun (variableName, variableValue) ->
-                     ( variableName,
-                       Anilist.CliArgument.jsonLiteralOfValue variableValue ))))
+                     (variableName, CliArgument.jsonLiteralOfValue variableValue))
+                 ))
       in
       executeQuery ~headers
-        ~operationName:
-          loweredRequest.Anilist.LoweringEngine.selectedOperationName ~variables
-        ~query)
+        ~operationName:loweredRequest.LoweringEngine.selectedOperationName
+        ~variables ~query)
 
 let () =
   let arguments = List.tl (Array.to_list Sys.argv) in
-  match Anilist.RequestOptions.extractionOfArguments arguments with
+  match RequestOptions.extractionOfArguments arguments with
   | Error message -> printAndExit stderr 1 message
   | Ok requestOptions -> (
       match
-        Anilist.SchemaArgumentParser.invocationOfArguments
-          requestOptions.Anilist.RequestOptions.remainingArguments
+        SchemaArgumentParser.invocationOfArguments
+          requestOptions.RequestOptions.remainingArguments
       with
       | Ok (Some schemaCommand) ->
           exit
             (Lwt_main.run
                (runProtected (fun () ->
-                    let endpoint =
-                      Anilist.GraphQlTransport.endpointOfEnvironment ()
-                    in
-                    Anilist.SchemaCommand.execute
-                      ~headers:requestOptions.Anilist.RequestOptions.headerPairs
+                    let endpoint = GraphQlTransport.endpointOfEnvironment () in
+                    SchemaCommand.execute
+                      ~headers:requestOptions.RequestOptions.headerPairs
                       ~endpoint schemaCommand
                     >>= fun (statusCode, responseBody) ->
                     printResponse statusCode responseBody)))
       | Error message ->
           if
-            Anilist.SchemaArgumentParser.helpRequestedOfArguments
-              requestOptions.Anilist.RequestOptions.remainingArguments
+            SchemaArgumentParser.helpRequestedOfArguments
+              requestOptions.RequestOptions.remainingArguments
           then printAndExit stdout 0 message
           else printAndExit stderr 1 message
       | Ok None -> (
           match
-            Anilist.CommandLineInvocationParser.invocationOfArguments
-              requestOptions.Anilist.RequestOptions.remainingArguments
+            CommandLineInvocationParser.invocationOfArguments
+              requestOptions.RequestOptions.remainingArguments
           with
           | Ok invocation ->
               exit
                 (Lwt_main.run
-                   (run
-                      ~headers:requestOptions.Anilist.RequestOptions.headerPairs
+                   (run ~headers:requestOptions.RequestOptions.headerPairs
                       invocation))
           | Error message ->
               if
-                Anilist.CommandLineInvocationShared.helpRequestedOfArguments
-                  requestOptions.Anilist.RequestOptions.remainingArguments
+                CommandLineInvocationShared.helpRequestedOfArguments
+                  requestOptions.RequestOptions.remainingArguments
               then printAndExit stdout 0 message
               else printAndExit stderr 1 message))

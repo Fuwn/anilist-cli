@@ -35,10 +35,13 @@ let fieldSegmentsOfPath fieldPath =
   |> List.map (fun segmentText ->
       FieldSegment (fieldPathSegmentOfText segmentText))
 
-let branchEndsInFragmentSpread branch =
-  match List.rev branch.selectionPathSegments with
+let segmentsEndInFragmentSpread selectionPathSegments =
+  match List.rev selectionPathSegments with
   | FragmentSpreadSegment _ :: _ -> true
   | (FieldSegment _ | InlineFragmentSegment _) :: _ | [] -> false
+
+let branchEndsInFragmentSpread branch =
+  segmentsEndInFragmentSpread branch.selectionPathSegments
 
 let makeSelectionBranchFromSegments segments =
   if segments = [] then
@@ -158,15 +161,13 @@ let currentDefaultSelectionPathPrefix parserState =
   parserState.currentDefaultSelectionPathPrefix
 
 let ensureSelectionPathCanAcceptChildren selectionPathSegments =
-  match List.rev selectionPathSegments with
-  | FragmentSpreadSegment _ :: _ ->
-      raise
-        (Invalid_argument
-           (Printf.sprintf
-              "Fragment spreads cannot contain child selections.\n\n%s"
-              CommandLineInvocationShared.usageText))
-  | (FieldSegment _ | InlineFragmentSegment _) :: _ | [] ->
-      selectionPathSegments
+  if segmentsEndInFragmentSpread selectionPathSegments then
+    raise
+      (Invalid_argument
+         (Printf.sprintf
+            "Fragment spreads cannot contain child selections.\n\n%s"
+            CommandLineInvocationShared.usageText))
+  else selectionPathSegments
 
 let classifiedBranchPath pathText =
   if

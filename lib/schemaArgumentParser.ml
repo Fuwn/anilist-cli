@@ -44,20 +44,24 @@ let parseArguments arguments =
     | "--type" :: [] -> missingValueError "type"
     | "--directive" :: [] -> missingValueError "directive"
     | "--type" :: value :: rest ->
-        let* updated = setOption "type" value accumulated.typeName in
-        loop { accumulated with typeName = updated } rest
+        let* typeName = setOption "type" value accumulated.typeName in
+        loop { accumulated with typeName } rest
     | "--directive" :: value :: rest ->
-        let* updated = setOption "directive" value accumulated.directiveName in
-        loop { accumulated with directiveName = updated } rest
+        let* directiveName =
+          setOption "directive" value accumulated.directiveName
+        in
+        loop { accumulated with directiveName } rest
     | argument :: rest when String.starts_with ~prefix:"--type=" argument ->
-        let value = String.sub argument 7 (String.length argument - 7) in
-        let* updated = setOption "type" value accumulated.typeName in
-        loop { accumulated with typeName = updated } rest
+        loop accumulated
+          ("--type"
+          :: StringPrefix.valueWithoutPrefix ~prefix:"--type=" argument
+          :: rest)
     | argument :: rest when String.starts_with ~prefix:"--directive=" argument
       ->
-        let value = String.sub argument 12 (String.length argument - 12) in
-        let* updated = setOption "directive" value accumulated.directiveName in
-        loop { accumulated with directiveName = updated } rest
+        loop accumulated
+          ("--directive"
+          :: StringPrefix.valueWithoutPrefix ~prefix:"--directive=" argument
+          :: rest)
     | argument :: _ ->
         Error
           (Printf.sprintf "Invalid schema argument: %s\n\n%s" argument usageText)

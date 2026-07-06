@@ -184,10 +184,9 @@ let selectedOperationAndVariables operations selectedOperationName =
             (Invalid_argument
                "Selected operation name does not match the document"))
 
-let lower ~operationDefinitions ~selectedOperationName
-    ~structuredFragmentDefinitions ~rawFragmentDefinitionTexts =
+let lower (invocation : CommandLineInvocationTypes.t) =
   let loweredOperations =
-    operationDefinitions |> List.map lowerOperationDefinition
+    invocation.operationDefinitions |> List.map lowerOperationDefinition
   in
   let operationNames =
     loweredOperations
@@ -201,11 +200,14 @@ let lower ~operationDefinitions ~selectedOperationName
     if not (uniqueNames [] operationNames) then
       raise (Invalid_argument "Operation names must be unique"));
   let selectedOperationName, loweredVariableAssignments =
-    selectedOperationAndVariables loweredOperations selectedOperationName
+    selectedOperationAndVariables loweredOperations
+      invocation.CommandLineInvocationTypes.selectedOperationName
   in
   let fragmentDefinitions =
-    (structuredFragmentDefinitions |> List.map lowerStructuredFragmentDefinition)
-    @ (rawFragmentDefinitionTexts |> List.map GraphQlFragmentDefinition.makeRaw)
+    (invocation.structuredFragmentDefinitions
+    |> List.map lowerStructuredFragmentDefinition)
+    @ (invocation.rawFragmentDefinitionTexts
+      |> List.map GraphQlFragmentDefinition.makeRaw)
   in
   {
     operations = loweredOperations |> List.map fst;
