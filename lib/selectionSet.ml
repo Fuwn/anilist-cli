@@ -2,7 +2,6 @@ type pathSegment = { alias : string option; name : string }
 type t = GraphQlSelection.t list
 type scopedFieldSelection = { relativeSelectionSet : t; rootSelectionSet : t }
 
-let empty = []
 let rootFieldPathPrefix = "root:"
 let rootSelectionPathPrefix = "/"
 let fragmentSpreadPrefix = "..."
@@ -32,94 +31,6 @@ let pathSegmentsOfCliField ~capitalizeRootFieldNames fieldPath =
       pathSegmentOfCliSegment
         ~capitalizeFieldName:(capitalizeRootFieldNames && index = 0)
         fieldName)
-
-let sameDirectives left right =
-  List.map GraphQlSelection.renderDirectiveText left
-  = List.map GraphQlSelection.renderDirectiveText right
-
-let sameFieldIdentity left right =
-  left.GraphQlSelection.fieldAlias = right.GraphQlSelection.fieldAlias
-  && left.GraphQlSelection.fieldName = right.GraphQlSelection.fieldName
-  && left.GraphQlSelection.fieldArguments
-     = right.GraphQlSelection.fieldArguments
-  && sameDirectives left.GraphQlSelection.fieldDirectives
-       right.GraphQlSelection.fieldDirectives
-
-let sameInlineFragmentIdentity left right =
-  left.GraphQlSelection.inlineFragmentTypeCondition
-  = right.GraphQlSelection.inlineFragmentTypeCondition
-  && sameDirectives left.GraphQlSelection.inlineFragmentDirectives
-       right.GraphQlSelection.inlineFragmentDirectives
-
-let sameFragmentSpreadIdentity left right =
-  left.GraphQlSelection.fragmentSpreadName
-  = right.GraphQlSelection.fragmentSpreadName
-  && sameDirectives left.GraphQlSelection.fragmentSpreadDirectives
-       right.GraphQlSelection.fragmentSpreadDirectives
-
-let rec mergedFieldSelection existingField field =
-  GraphQlSelection.field
-    (GraphQlSelection.makeField ?alias:field.GraphQlSelection.fieldAlias
-       ~directives:field.GraphQlSelection.fieldDirectives
-       ~name:field.GraphQlSelection.fieldName
-       ~arguments:field.GraphQlSelection.fieldArguments
-       ~selectionSet:
-         (mergeSelectionSets existingField.GraphQlSelection.fieldSelectionSet
-            field.GraphQlSelection.fieldSelectionSet)
-       ())
-
-and mergedInlineFragmentSelection existingInlineFragment inlineFragment =
-  GraphQlSelection.inlineFragment
-    (GraphQlSelection.makeInlineFragment
-       ?typeCondition:
-         inlineFragment.GraphQlSelection.inlineFragmentTypeCondition
-       ~directives:inlineFragment.GraphQlSelection.inlineFragmentDirectives
-       ~selectionSet:
-         (mergeSelectionSets
-            existingInlineFragment.GraphQlSelection.inlineFragmentSelectionSet
-            inlineFragment.GraphQlSelection.inlineFragmentSelectionSet)
-       ())
-
-and mergeSelection selection selectionSet =
-  match selectionSet with
-  | [] -> [ selection ]
-  | GraphQlSelection.Field existingField :: remainingSelections -> (
-      match selection with
-      | GraphQlSelection.Field field when sameFieldIdentity existingField field
-        ->
-          mergedFieldSelection existingField field :: remainingSelections
-      | GraphQlSelection.Field _ | GraphQlSelection.FragmentSpread _
-      | GraphQlSelection.InlineFragment _ ->
-          GraphQlSelection.Field existingField
-          :: mergeSelection selection remainingSelections)
-  | GraphQlSelection.FragmentSpread existingFragmentSpread
-    :: remainingSelections -> (
-      match selection with
-      | GraphQlSelection.FragmentSpread fragmentSpread
-        when sameFragmentSpreadIdentity existingFragmentSpread fragmentSpread ->
-          GraphQlSelection.FragmentSpread existingFragmentSpread
-          :: remainingSelections
-      | GraphQlSelection.Field _ | GraphQlSelection.FragmentSpread _
-      | GraphQlSelection.InlineFragment _ ->
-          GraphQlSelection.FragmentSpread existingFragmentSpread
-          :: mergeSelection selection remainingSelections)
-  | GraphQlSelection.InlineFragment existingInlineFragment
-    :: remainingSelections -> (
-      match selection with
-      | GraphQlSelection.InlineFragment inlineFragment
-        when sameInlineFragmentIdentity existingInlineFragment inlineFragment ->
-          mergedInlineFragmentSelection existingInlineFragment inlineFragment
-          :: remainingSelections
-      | GraphQlSelection.Field _ | GraphQlSelection.FragmentSpread _
-      | GraphQlSelection.InlineFragment _ ->
-          GraphQlSelection.InlineFragment existingInlineFragment
-          :: mergeSelection selection remainingSelections)
-
-and mergeSelectionSets leftSelectionSet rightSelectionSet =
-  List.fold_left
-    (fun mergedSelectionSet selection ->
-      mergeSelection selection mergedSelectionSet)
-    leftSelectionSet rightSelectionSet
 
 let rec fieldOfPathSegments = function
   | [] -> raise (Invalid_argument "Field path cannot be empty")
@@ -190,10 +101,6 @@ let selectionsOfScopedPaths ~capitalizeRootFieldNames scopedPaths =
         scopedPath
         |> pathSegmentsOfCliField ~capitalizeRootFieldNames
         |> fieldOfPathSegments)
-  |> mergeSelectionSets []
-
-let merge leftSelectionSet rightSelectionSets =
-  List.fold_left mergeSelectionSets leftSelectionSet rightSelectionSets
 
 let ofCliArguments ?(capitalizeRelativeRootFieldNames = false)
     ?(capitalizeRootFieldNames = false) fieldExpressions =

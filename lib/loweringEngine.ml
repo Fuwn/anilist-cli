@@ -99,21 +99,10 @@ let selectionSetOfTarget ~capitalizeRootFieldNames ~rootSelectionExpressions
          (lowerSelectionBranch ~capitalizeRootFieldNames
             ~isTargetRoot:capitalizeRootFieldNames)
   in
-  let branchSelectionSet =
-    loweredBranches
-    |> List.map (fun (selection, _) -> [ selection ])
-    |> SelectionSet.merge SelectionSet.empty
-  in
-  let branchRootSelectionSet =
-    loweredBranches |> List.map snd |> SelectionSet.merge SelectionSet.empty
-  in
-  SelectionSet.merge SelectionSet.empty
-    [
-      rootScopedSelection.SelectionSet.relativeSelectionSet;
-      rootScopedSelection.SelectionSet.rootSelectionSet;
-      branchSelectionSet;
-      branchRootSelectionSet;
-    ]
+  rootScopedSelection.SelectionSet.relativeSelectionSet
+  @ rootScopedSelection.SelectionSet.rootSelectionSet
+  @ List.map fst loweredBranches
+  @ List.concat_map snd loweredBranches
 
 let lowerStructuredFragmentDefinition structuredFragmentDefinition =
   let selectionSet =

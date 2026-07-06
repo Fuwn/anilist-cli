@@ -200,6 +200,8 @@ let testNestedFieldBranchLowering () =
     \    title {\n\
     \      romaji\n\
     \    }\n\
+    \  }\n\
+    \  Media(type: ANIME, id: 42) {\n\
     \    coverImage {\n\
     \      extraLarge\n\
     \    }\n\
@@ -270,11 +272,15 @@ let testInlineFragmentBranchLowering () =
     "query {\n\
     \  Media(id: 1) {\n\
     \    id\n\
+    \  }\n\
+    \  Media(id: 1) {\n\
     \    ... on Anime @skip(if: $skipAnime) {\n\
     \      title {\n\
     \        romaji\n\
     \      }\n\
     \    }\n\
+    \  }\n\
+    \  Media(id: 1) {\n\
     \    ... on Anime {\n\
     \      relations(type: SEQUEL) {\n\
     \        edges {\n\
