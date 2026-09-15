@@ -158,7 +158,6 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(self.requests, [])
 
-    @unittest.expectedFailure
     def test_missing_value_is_local_error(self):
         result = self.run_cli("media", "--id", "--selection-set", "id")
 
@@ -201,6 +200,24 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(result.stdout, "")
         self.assertEqual(json.loads(result.stderr), self.response)
+
+    def test_equals_value_and_variables(self):
+        result = self.run_cli(
+            "query",
+            "--variable-definition",
+            "$name: String!",
+            "--variable",
+            "name=string:--value",
+            "--field",
+            "user",
+            "--name=--value",
+            "--selection-set",
+            "id",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.requests[0][0]["variables"], {"name": "--value"})
+        self.assertIn('name: "--value"', self.requests[0][0]["query"])
 
 
 if __name__ == "__main__":

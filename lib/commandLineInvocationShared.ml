@@ -92,6 +92,7 @@ let optionNameAndValueOfEqualsSyntax token =
         String.sub token (equalsIndex + 1)
           (String.length token - equalsIndex - 1)
       in
+
       Some (optionName, optionValue)
   | None -> None
 
@@ -118,10 +119,12 @@ let optionPairOfToken token remainingTokens =
   | Some optionPair -> (optionPair, remainingTokens)
   | None -> (
       match remainingTokens with
-      | optionValue :: tail ->
+      | optionValue :: tail
+        when not (String.starts_with ~prefix:"--" optionValue) ->
           let optionName = String.sub token 2 (String.length token - 2) in
+
           ((optionName, optionValue), tail)
-      | [] ->
+      | [] | _ :: _ ->
           raise
             (Invalid_argument
                (Printf.sprintf "Missing value for option %s\n\n%s" token
@@ -129,6 +132,7 @@ let optionPairOfToken token remainingTokens =
 
 let valueOfOptionToken token remainingTokens =
   let (_, optionValue), tail = optionPairOfToken token remainingTokens in
+
   (optionValue, tail)
 
 let variableAssignmentOfText variableAssignmentText =
@@ -141,6 +145,7 @@ let variableAssignmentOfText variableAssignmentText =
         String.sub variableAssignmentText (equalsIndex + 1)
           (String.length variableAssignmentText - equalsIndex - 1)
       in
+
       if variableName = "" then
         raise
           (Invalid_argument
@@ -170,6 +175,7 @@ let structuredFragmentNameAndTypeCondition fragmentText =
   | [ fragmentName; typeCondition ] ->
       let normalizedFragmentName = String.trim fragmentName in
       let normalizedTypeCondition = String.trim typeCondition in
+
       if normalizedFragmentName = "" || normalizedTypeCondition = "" then
         raise
           (Invalid_argument
@@ -196,6 +202,7 @@ let operationHeaderOfText operationText =
       match operationTypeOfToken (String.trim operationToken) with
       | Some operationType ->
           let normalizedOperationName = String.trim operationName in
+
           if normalizedOperationName = "" then
             raise
               (Invalid_argument
