@@ -6,8 +6,24 @@ let bareOptionNameOfToken token =
   | None -> String.sub token 2 (String.length token - 2)
 
 let replaceCurrentSelectionBranchWithSegments parserState resolvedSegments =
-  CommandLineInvocationState.withUpdatedCurrentSelectionBranch
-    (CommandLineInvocationState.finalizedCurrentBranch parserState)
+  let rec extendsPath parent child =
+    match (parent, child) with
+    | [], _ :: _ -> true
+    | parentSegment :: parentTail, childSegment :: childTail
+      when parentSegment = childSegment ->
+        extendsPath parentTail childTail
+    | _ -> false
+  in
+  let parserState =
+    match parserState.currentBranch with
+    | Some branch
+      when branch.selectionExpressions = []
+           && extendsPath branch.selectionPathSegments resolvedSegments ->
+        { parserState with currentBranch = None }
+    | _ -> CommandLineInvocationState.finalizedCurrentBranch parserState
+  in
+
+  CommandLineInvocationState.withUpdatedCurrentSelectionBranch parserState
     (CommandLineInvocationBranch.makeSelectionBranchFromSegments
        resolvedSegments)
 
@@ -37,6 +53,7 @@ let handleOperation parserState operationHeaderText =
   let operationType, operationName =
     CommandLineInvocationShared.operationHeaderOfText operationHeaderText
   in
+
   CommandLineInvocationState.startedOperationDefinition parserState
     operationType operationName
 
@@ -49,6 +66,7 @@ let handleFragment parserState fragmentText =
     CommandLineInvocationShared.structuredFragmentNameAndTypeCondition
       fragmentText
   in
+
   CommandLineInvocationState.startedStructuredFragmentDefinition parserState
     fragmentName fragmentTypeCondition
 
@@ -114,6 +132,7 @@ let handleFragmentDefinition parserState fragmentDefinitionText =
   let finalizedParserState =
     CommandLineInvocationState.finalizedAllPending parserState
   in
+
   {
     finalizedParserState with
     pendingRawFragmentDefinitionTexts =
@@ -179,6 +198,7 @@ let handlePositionalToken parserState token =
       let finalizedParserState =
         CommandLineInvocationState.finalizedCurrentBranch parserState
       in
+
       replaceCurrentSelectionBranchWithSegments finalizedParserState
         (CommandLineInvocationBranch.resolvedSelectionPathSegmentsOfFieldPath
            finalizedParserState token)
@@ -214,14 +234,17 @@ let rec parseRemainingArguments parserState = function
               CommandLineInvocationShared.valueOfOptionToken token
                 remainingTokens
             in
+
             (handler parserState optionValue, remainingTokens)
         | None ->
             let fieldArgumentPair, remainingTokens =
               CommandLineInvocationShared.optionPairOfToken token
                 remainingTokens
             in
+
             (handleFieldArgument parserState fieldArgumentPair, remainingTokens)
       in
+
       parseRemainingArguments updatedParserState remainingTokens
   | token :: remainingTokens ->
       parseRemainingArguments
@@ -239,5 +262,6 @@ let invocationOfArguments arguments =
           parseRemainingArguments CommandLineInvocationState.initialParserState
             arguments
         in
+
         CommandLineInvocationValidation.validatedInvocation invocation
       with Invalid_argument message -> Error message)

@@ -89,7 +89,6 @@ class CliIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(self.requests[0][1]["x-test"], "value")
 
-    @unittest.expectedFailure
     def test_nested_field(self):
         self.assert_query(
             [
@@ -106,7 +105,6 @@ class CliIntegrationTest(unittest.TestCase):
             "query {\n  Media(id: 1) {\n    title {\n      romaji\n    }\n  }\n}",
         )
 
-    @unittest.expectedFailure
     def test_nested_fragment(self):
         self.assert_query(
             [
@@ -119,6 +117,24 @@ class CliIntegrationTest(unittest.TestCase):
                 "id",
             ],
             "query {\n  Media {\n    ... on Media {\n      id\n    }\n  }\n}",
+        )
+
+    def test_independent_selections_survive(self):
+        self.assert_query(
+            [
+                "query",
+                "--field",
+                "__typename",
+                "--field",
+                "media",
+                "--selection-set",
+                "id",
+                "--field",
+                "./title",
+                "--selection-set",
+                "romaji",
+            ],
+            "query {\n  __typename\n  Media {\n    id\n  }\n  Media {\n    title {\n      romaji\n    }\n  }\n}",
         )
 
     @unittest.expectedFailure
