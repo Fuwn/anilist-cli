@@ -34,9 +34,10 @@ let fieldSegmentsOfPath fieldPath =
 let graphQlArgumentsOfOptionPairs optionPairs =
   optionPairs
   |> List.map (fun (optionName, optionValue) ->
-      CliArgument.make
-        ~name:(GraphQlName.lowerCamelCaseOfCliToken optionName)
-        ~rawValue:optionValue)
+      {
+        CliArgument.name = GraphQlName.lowerCamelCaseOfCliToken optionName;
+        value = optionValue;
+      })
 
 let graphQlFieldNameOfSegment ~isTargetRoot fieldName =
   if isTargetRoot then GraphQlName.upperCamelCaseOfCliToken fieldName

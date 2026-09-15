@@ -3,21 +3,19 @@ open CommandLineInvocationTypes
 let operationDefinitionsHaveSelections operationDefinitions =
   operationDefinitions
   |> List.for_all (fun operationDefinition ->
-      operationDefinition.rootSelectionExpressions <> []
+      operationDefinition.rootSelectionPaths <> []
       || operationDefinition.selectionBranches <> [])
 
 let structuredFragmentsHaveSelections structuredFragmentDefinitions =
   structuredFragmentDefinitions
   |> List.for_all (fun fragmentDefinition ->
-      fragmentDefinition.fragmentRootSelectionExpressions <> []
+      fragmentDefinition.fragmentRootSelectionPaths <> []
       || fragmentDefinition.fragmentSelectionBranches <> [])
 
 let branchHasCompleteInlineFragment branch =
   match List.rev branch.selectionPathSegments with
   | InlineFragmentSegment _ :: _ ->
-      List.exists
-        (fun (scope, _) -> scope = `Relative)
-        (SelectionSet.parsedExpressions branch.selectionExpressions)
+      List.exists (fun (scope, _) -> scope = `Relative) branch.selectionPaths
   | FieldSegment _ :: _ | FragmentSpreadSegment _ :: _ -> true
   | [] -> false
 

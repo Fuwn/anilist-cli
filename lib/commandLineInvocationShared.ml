@@ -163,9 +163,7 @@ let variableAssignmentOfText variableAssignmentText =
              (Printf.sprintf
                 "Variable assignments cannot contain variable references.\n\n%s"
                 usageText))
-      else (
-        ignore (CliArgument.valueOfRawValue rawValue);
-        (variableName, rawValue))
+      else (variableName, CliArgument.valueOfRawValue rawValue)
   | _ ->
       raise
         (Invalid_argument

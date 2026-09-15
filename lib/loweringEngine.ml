@@ -7,12 +7,6 @@ type request = {
   fragmentDefinitions : GraphQlFragmentDefinition.t list;
 }
 
-let valuesOfVariableAssignments variableAssignments =
-  variableAssignments
-  |> List.map (fun (variableName, rawValue) ->
-      ( variableName,
-        (CliArgument.make ~name:variableName ~rawValue).CliArgument.value ))
-
 let lowerSelectionBranch ~capitalizeRootFieldNames ~isTargetRoot selectionBranch
     =
   let selectionsRemainAtRoot =
@@ -24,9 +18,9 @@ let lowerSelectionBranch ~capitalizeRootFieldNames ~isTargetRoot selectionBranch
          selectionBranch.selectionPathSegments
   in
   let scopedSelection =
-    SelectionSet.ofCliArguments
+    SelectionSet.ofPaths
       ~capitalizeRelativeRootFieldNames:selectionsRemainAtRoot
-      ~capitalizeRootFieldNames selectionBranch.selectionExpressions
+      ~capitalizeRootFieldNames selectionBranch.selectionPaths
   in
   let loweredSelection =
     SelectionPath.lowerSelectionPathSegments ~isTargetRoot
@@ -36,12 +30,12 @@ let lowerSelectionBranch ~capitalizeRootFieldNames ~isTargetRoot selectionBranch
 
   (loweredSelection, scopedSelection.SelectionSet.rootSelectionSet)
 
-let selectionSetOfTarget ~capitalizeRootFieldNames ~rootSelectionExpressions
+let selectionSetOfTarget ~capitalizeRootFieldNames ~rootSelectionPaths
     ~selectionBranches =
   let rootScopedSelection =
-    SelectionSet.ofCliArguments
+    SelectionSet.ofPaths
       ~capitalizeRelativeRootFieldNames:capitalizeRootFieldNames
-      ~capitalizeRootFieldNames rootSelectionExpressions
+      ~capitalizeRootFieldNames rootSelectionPaths
   in
   let loweredBranches =
     selectionBranches
@@ -58,8 +52,8 @@ let selectionSetOfTarget ~capitalizeRootFieldNames ~rootSelectionExpressions
 let lowerStructuredFragmentDefinition structuredFragmentDefinition =
   let selectionSet =
     selectionSetOfTarget ~capitalizeRootFieldNames:false
-      ~rootSelectionExpressions:
-        structuredFragmentDefinition.fragmentRootSelectionExpressions
+      ~rootSelectionPaths:
+        structuredFragmentDefinition.fragmentRootSelectionPaths
       ~selectionBranches:structuredFragmentDefinition.fragmentSelectionBranches
   in
 
@@ -77,13 +71,13 @@ let lowerOperationDefinition
        variableDefinitions;
        variableAssignments;
        operationDirectiveTexts;
-       rootSelectionExpressions;
+       rootSelectionPaths;
        selectionBranches;
      } :
       operationDefinition) =
   let operationSelectionSet =
-    selectionSetOfTarget ~capitalizeRootFieldNames:true
-      ~rootSelectionExpressions ~selectionBranches
+    selectionSetOfTarget ~capitalizeRootFieldNames:true ~rootSelectionPaths
+      ~selectionBranches
   in
   let operation =
     GraphQlOperation.make ?name:operationName ~variableDefinitions
@@ -91,7 +85,7 @@ let lowerOperationDefinition
       ~selectionSet:operationSelectionSet ()
   in
 
-  (operation, valuesOfVariableAssignments variableAssignments)
+  (operation, variableAssignments)
 
 let selectedOperationAndVariables operations selectedOperationName =
   match selectedOperationName with

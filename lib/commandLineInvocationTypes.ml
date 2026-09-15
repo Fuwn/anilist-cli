@@ -6,7 +6,7 @@ type operationType = GraphQlOperation.operationType =
 type fieldSegment = {
   fieldName : string;
   fieldAlias : string option;
-  fieldArgumentPairs : (string * string) list;
+  fieldArgumentPairs : (string * CliArgument.value) list;
   fieldDirectiveTexts : string list;
 }
 
@@ -25,18 +25,20 @@ type selectionPathSegment =
   | InlineFragmentSegment of inlineFragmentSegment
   | FragmentSpreadSegment of fragmentSpreadSegment
 
+type scopedSelectionPath = [ `Relative | `Root ] * selectionPathSegment list
+
 type selectionBranch = {
   selectionPathSegments : selectionPathSegment list;
-  selectionExpressions : string list;
+  selectionPaths : scopedSelectionPath list;
 }
 
 type operationDefinition = {
   operationType : operationType;
   operationName : string option;
   variableDefinitions : string list;
-  variableAssignments : (string * string) list;
+  variableAssignments : (string * CliArgument.value) list;
   operationDirectiveTexts : string list;
-  rootSelectionExpressions : string list;
+  rootSelectionPaths : scopedSelectionPath list;
   selectionBranches : selectionBranch list;
 }
 
@@ -44,7 +46,7 @@ type structuredFragmentDefinition = {
   fragmentName : string;
   fragmentTypeCondition : string;
   fragmentDirectiveTexts : string list;
-  fragmentRootSelectionExpressions : string list;
+  fragmentRootSelectionPaths : scopedSelectionPath list;
   fragmentSelectionBranches : selectionBranch list;
 }
 

@@ -12,6 +12,7 @@ let assertContainsSubstring substring text =
     then ()
     else loop (startIndex + 1)
   in
+
   loop 0
 
 let fieldSegment ?alias ?(directives = []) fieldName optionPairs =
@@ -19,10 +20,14 @@ let fieldSegment ?alias ?(directives = []) fieldName optionPairs =
     {
       CommandLineInvocationTypes.fieldName;
       CommandLineInvocationTypes.fieldAlias = alias;
-      CommandLineInvocationTypes.fieldArgumentPairs = optionPairs;
+      CommandLineInvocationTypes.fieldArgumentPairs =
+        List.map
+          (fun (name, value) -> (name, CliArgument.valueOfRawValue value))
+          optionPairs;
       CommandLineInvocationTypes.fieldDirectiveTexts = directives;
     }
   in
+
   CommandLineInvocationTypes.FieldSegment loweredFieldSegment
 
 let inlineFragmentSegment ?(directives = []) typeCondition =
@@ -41,31 +46,38 @@ let fragmentSpreadSegment ?(directives = []) name =
      }
       : CommandLineInvocationTypes.fragmentSpreadSegment)
 
-let selectionBranch selectionPathSegments selectionExpressions =
-  { CommandLineInvocationTypes.selectionPathSegments; selectionExpressions }
+let selectionBranch selectionPathSegments selectionPaths =
+  {
+    CommandLineInvocationTypes.selectionPathSegments;
+    selectionPaths = SelectionSet.parsedExpressions selectionPaths;
+  }
 
 let operationDefinition ?operationName ?(variableDefinitions = [])
-    ?(variableAssignments = []) ?(directives = []) rootSelectionExpressions
+    ?(variableAssignments = []) ?(directives = []) rootSelectionPaths
     selectionBranches =
   ({
      CommandLineInvocationTypes.operationType = CommandLineInvocationTypes.Query;
      CommandLineInvocationTypes.operationName;
      CommandLineInvocationTypes.variableDefinitions;
-     CommandLineInvocationTypes.variableAssignments;
+     CommandLineInvocationTypes.variableAssignments =
+       List.map
+         (fun (name, value) -> (name, CliArgument.valueOfRawValue value))
+         variableAssignments;
      CommandLineInvocationTypes.operationDirectiveTexts = directives;
-     CommandLineInvocationTypes.rootSelectionExpressions;
+     CommandLineInvocationTypes.rootSelectionPaths =
+       SelectionSet.parsedExpressions rootSelectionPaths;
      CommandLineInvocationTypes.selectionBranches;
    }
     : CommandLineInvocationTypes.operationDefinition)
 
 let structuredFragmentDefinition ?(directives = []) fragmentName
-    fragmentTypeCondition fragmentRootSelectionExpressions
-    fragmentSelectionBranches =
+    fragmentTypeCondition fragmentRootSelectionPaths fragmentSelectionBranches =
   {
     CommandLineInvocationTypes.fragmentName;
     fragmentTypeCondition;
     fragmentDirectiveTexts = directives;
-    fragmentRootSelectionExpressions;
+    fragmentRootSelectionPaths =
+      SelectionSet.parsedExpressions fragmentRootSelectionPaths;
     fragmentSelectionBranches;
   }
 
@@ -95,6 +107,7 @@ let testSingleFieldSelectionShorthand () =
              ];
          ])
   in
+
   assertEqual "query {\n  User(name: \"fuwn\") {\n    id\n    name\n  }\n}"
     (queryOfLoweredRequest request)
 
@@ -110,11 +123,11 @@ let testExplicitOperationWithMultipleRootFields () =
               CommandLineInvocationTypes.variableDefinitions =
                 [ "$userName: String!" ];
               CommandLineInvocationTypes.variableAssignments =
-                [ ("userName", "string:fuwn") ];
+                [ ("userName", CliArgument.String "fuwn") ];
               CommandLineInvocationTypes.operationDirectiveTexts =
                 [ "cacheControl(maxAge: 60)" ];
-              CommandLineInvocationTypes.rootSelectionExpressions =
-                [ "viewer.id" ];
+              CommandLineInvocationTypes.rootSelectionPaths =
+                SelectionSet.parsedExpressions [ "viewer.id" ];
               CommandLineInvocationTypes.selectionBranches =
                 [
                   selectionBranch
@@ -128,6 +141,7 @@ let testExplicitOperationWithMultipleRootFields () =
              : CommandLineInvocationTypes.operationDefinition);
          ])
   in
+
   assertEqual
     "query Viewer($userName: String!) @cacheControl(maxAge: 60) {\n\
     \  Viewer {\n\
@@ -163,6 +177,7 @@ let testFieldAliasAndDirectiveLowering () =
              ];
          ])
   in
+
   assertEqual
     "query {\n\
     \  account: User(name: \"fuwn\") @include(if: $withUser) {\n\
@@ -193,6 +208,7 @@ let testNestedFieldBranchLowering () =
              ];
          ])
   in
+
   assertEqual
     "query {\n\
     \  Media(type: ANIME, id: 42) {\n\
@@ -227,6 +243,7 @@ let testStructuredFragmentDefinitionLowering () =
              ];
          ])
   in
+
   assertEqual
     "query {\n\
     \  Media(id: 1) {\n\
@@ -268,6 +285,7 @@ let testInlineFragmentBranchLowering () =
              ];
          ])
   in
+
   assertEqual
     "query {\n\
     \  Media(id: 1) {\n\
@@ -317,6 +335,7 @@ let testFragmentSpreadDirectiveLowering () =
              ];
          ])
   in
+
   assertEqual
     "query {\n\
     \  Media(id: 1) {\n\
@@ -348,6 +367,7 @@ let testRawAndStructuredFragmentsCoexist () =
              ];
          ])
   in
+
   assertEqual
     "query {\n\
     \  Media(id: 1) {\n\
@@ -374,8 +394,8 @@ let testMultipleOperationDocumentLowering () =
               CommandLineInvocationTypes.variableAssignments = [];
               CommandLineInvocationTypes.operationDirectiveTexts =
                 [ "cacheControl(maxAge: 60)" ];
-              CommandLineInvocationTypes.rootSelectionExpressions =
-                [ "viewer.id" ];
+              CommandLineInvocationTypes.rootSelectionPaths =
+                SelectionSet.parsedExpressions [ "viewer.id" ];
               CommandLineInvocationTypes.selectionBranches = [];
             }
              : CommandLineInvocationTypes.operationDefinition);
@@ -387,6 +407,7 @@ let testMultipleOperationDocumentLowering () =
              ];
          ])
   in
+
   assertEqual
     "query Viewer @cacheControl(maxAge: 60) {\n\
     \  Viewer {\n\
@@ -410,6 +431,7 @@ let testSelectionSetCompatibilityAliasParsing () =
       let operationDefinition =
         List.hd invocation.CommandLineInvocationTypes.operationDefinitions
       in
+
       assertEqual "1"
         (string_of_int
            (List.length
@@ -447,6 +469,7 @@ let testOperationParsing () =
       let operationDefinition =
         List.hd invocation.CommandLineInvocationTypes.operationDefinitions
       in
+
       assertEqual "Viewer"
         (Option.get operationDefinition.CommandLineInvocationTypes.operationName);
       assertEqual "1"
@@ -489,6 +512,7 @@ let testVariableAssignmentsPreserveGraphQlVariableNames () =
       let operationDefinition =
         List.hd invocation.CommandLineInvocationTypes.operationDefinitions
       in
+
       assertEqual "user_name"
         (fst
            (List.hd
@@ -560,6 +584,7 @@ let testRelativeAndAbsoluteFieldPathParsing () =
         operationDefinition.CommandLineInvocationTypes.selectionBranches
         |> List.rev |> List.hd
       in
+
       assertEqual "2"
         (string_of_int
            (List.length
@@ -593,6 +618,7 @@ let testExplicitOperationBarePositionalSiblingFields () =
       let operationDefinition =
         List.hd invocation.CommandLineInvocationTypes.operationDefinitions
       in
+
       assertEqual "2"
         (string_of_int
            (List.length
@@ -624,6 +650,7 @@ let testInlineFragmentParsing () =
         operationDefinition.CommandLineInvocationTypes.selectionBranches
         |> List.rev |> List.hd
       in
+
       assertEqual "2"
         (string_of_int
            (List.length
@@ -654,6 +681,7 @@ let testFragmentSpreadParsing () =
         operationDefinition.CommandLineInvocationTypes.selectionBranches
         |> List.rev |> List.hd
       in
+
       match
         List.rev
           fragmentSpreadBranch.CommandLineInvocationTypes.selectionPathSegments
@@ -862,13 +890,16 @@ let testRequestHeaderExtractionRejectsMissingHeaderValue () =
 let testCommandLineHelpDetection () =
   if not (CommandLineInvocationShared.helpRequestedOfArguments [ "--help" ])
   then failwith "Expected top-level help detection";
+
   if
     not
       (CommandLineInvocationShared.helpRequestedOfArguments
          [ "query"; "--help" ])
   then failwith "Expected trailing flag help detection";
+
   if CommandLineInvocationShared.helpRequestedOfArguments [ "--bogus"; "help" ]
   then failwith "Unexpected bare help token detection";
+
   if
     CommandLineInvocationShared.helpRequestedOfArguments
       [ "query"; "--help"; "extra" ]
@@ -877,8 +908,10 @@ let testCommandLineHelpDetection () =
 let testSchemaHelpDetection () =
   if not (SchemaArgumentParser.helpRequestedOfArguments [ "schema"; "--help" ])
   then failwith "Expected schema help detection";
+
   if not (SchemaArgumentParser.helpRequestedOfArguments [ "schema"; "help" ])
   then failwith "Expected schema bare help detection";
+
   if SchemaArgumentParser.helpRequestedOfArguments [ "schema"; "nope"; "help" ]
   then failwith "Unexpected schema malformed help detection"
 

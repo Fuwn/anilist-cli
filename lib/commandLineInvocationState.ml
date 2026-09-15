@@ -41,10 +41,12 @@ let finalizedCurrentBranch parserState =
             })
           ~onNeither:(fun parserState -> parserState)
       in
+
       { parserState with currentBranch = None }
 
 let finalizedCurrentStructuredFragmentDefinition parserState =
   let parserState = finalizedCurrentBranch parserState in
+
   match parserState.currentStructuredFragmentDefinition with
   | None -> parserState
   | Some fragment ->
@@ -57,6 +59,7 @@ let finalizedCurrentStructuredFragmentDefinition parserState =
 
 let finalizedCurrentOperationDefinition parserState =
   let parserState = finalizedCurrentBranch parserState in
+
   match parserState.currentOperationDefinition with
   | None -> parserState
   | Some operationDefinition ->
@@ -80,19 +83,19 @@ let withUpdatedCurrentSelectionBranch parserState branch =
   then raiseMissing "Selections require an operation or fragment context."
   else { parserState with currentBranch = Some branch }
 
-let withAddedRootSelectionExpression parserState selectionExpression =
+let withAddedRootSelectionPaths parserState selectionPaths =
   withMappedCurrentTarget parserState
     ~onFragment:(fun fragment ->
       {
         fragment with
-        fragmentRootSelectionExpressions =
-          fragment.fragmentRootSelectionExpressions @ [ selectionExpression ];
+        fragmentRootSelectionPaths =
+          fragment.fragmentRootSelectionPaths @ selectionPaths;
       })
     ~onOperation:(fun operationDefinition ->
       {
         operationDefinition with
-        rootSelectionExpressions =
-          operationDefinition.rootSelectionExpressions @ [ selectionExpression ];
+        rootSelectionPaths =
+          operationDefinition.rootSelectionPaths @ selectionPaths;
       })
     ~onNeither:(fun _ ->
       raiseMissing "Selections require an operation or fragment context.")
@@ -116,6 +119,7 @@ let withAddedCurrentTargetDirective parserState directiveText =
 
 let startedOperationDefinition parserState operationType operationName =
   let parserState = finalizedAllPending parserState in
+
   {
     parserState with
     currentOperationDefinition =
@@ -126,7 +130,7 @@ let startedOperationDefinition parserState operationType operationName =
           variableDefinitions = [];
           variableAssignments = [];
           operationDirectiveTexts = [];
-          rootSelectionExpressions = [];
+          rootSelectionPaths = [];
           selectionBranches = [];
         };
     currentDefaultSelectionPathPrefix = [];
@@ -136,6 +140,7 @@ let startedShorthandQueryOperation parserState firstFieldToken =
   let branch =
     CommandLineInvocationBranch.makeSelectionBranchFromFieldPath firstFieldToken
   in
+
   {
     (startedOperationDefinition parserState Query None) with
     currentBranch = Some branch;
@@ -145,6 +150,7 @@ let startedShorthandQueryOperation parserState firstFieldToken =
 let startedStructuredFragmentDefinition parserState fragmentName
     fragmentTypeCondition =
   let parserState = finalizedAllPending parserState in
+
   {
     parserState with
     currentStructuredFragmentDefinition =
@@ -153,7 +159,7 @@ let startedStructuredFragmentDefinition parserState fragmentName
           fragmentName;
           fragmentTypeCondition;
           fragmentDirectiveTexts = [];
-          fragmentRootSelectionExpressions = [];
+          fragmentRootSelectionPaths = [];
           fragmentSelectionBranches = [];
         };
   }
@@ -172,6 +178,7 @@ let initialParserState =
 
 let currentInvocationOfState parserState =
   let parserState = finalizedAllPending parserState in
+
   {
     operationDefinitions = parserState.finalizedOperationDefinitions;
     selectedOperationName = parserState.requestedOperationName;

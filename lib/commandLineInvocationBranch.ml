@@ -20,7 +20,7 @@ let makeSelectionBranchFromSegments segments =
       (Invalid_argument
          (Printf.sprintf "Selection path cannot be empty.\n\n%s"
             CommandLineInvocationShared.usageText))
-  else { selectionPathSegments = segments; selectionExpressions = [] }
+  else { selectionPathSegments = segments; selectionPaths = [] }
 
 let makeSelectionBranchFromFieldPath fieldPath =
   fieldPath |> SelectionPath.fieldSegmentsOfPath
@@ -32,18 +32,13 @@ let updateLastSegment branch mapSegment =
   | last :: rest ->
       { branch with selectionPathSegments = List.rev (mapSegment last :: rest) }
 
-let withAddedBranchSelectionExpression branch selectionExpression =
+let withAddedBranchSelectionPaths branch selectionPaths =
   if branchEndsInFragmentSpread branch then
     raise
       (Invalid_argument
          (Printf.sprintf "Fragment spreads cannot define a selection set.\n\n%s"
             CommandLineInvocationShared.usageText))
-  else
-    {
-      branch with
-      selectionExpressions =
-        branch.selectionExpressions @ [ selectionExpression ];
-    }
+  else { branch with selectionPaths = branch.selectionPaths @ selectionPaths }
 
 let withPushedFieldSelectionPathSegment branch fieldName =
   if branchEndsInFragmentSpread branch then

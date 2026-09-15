@@ -17,7 +17,7 @@ let replaceCurrentSelectionBranchWithSegments parserState resolvedSegments =
   let parserState =
     match parserState.currentBranch with
     | Some branch
-      when branch.selectionExpressions = []
+      when branch.selectionPaths = []
            && extendsPath branch.selectionPathSegments resolvedSegments ->
         { parserState with currentBranch = None }
     | _ -> CommandLineInvocationState.finalizedCurrentBranch parserState
@@ -70,16 +70,16 @@ let handleFragment parserState fragmentText =
   CommandLineInvocationState.startedStructuredFragmentDefinition parserState
     fragmentName fragmentTypeCondition
 
-let handleSelectionSet parserState selectionExpression =
-  ignore (SelectionSet.parsedExpressions [ selectionExpression ]);
+let handleSelectionSet parserState expressionText =
+  let selectionPaths = SelectionSet.parsedExpressions [ expressionText ] in
 
   updateBranchOrFallback parserState
     ~onBranch:(fun branch ->
-      CommandLineInvocationBranch.withAddedBranchSelectionExpression branch
-        selectionExpression)
+      CommandLineInvocationBranch.withAddedBranchSelectionPaths branch
+        selectionPaths)
     ~onNoBranch:(fun state ->
-      CommandLineInvocationState.withAddedRootSelectionExpression state
-        selectionExpression)
+      CommandLineInvocationState.withAddedRootSelectionPaths state
+        selectionPaths)
 
 let handleOperationName parserState operationName =
   withCurrentOperationOrRaise ~optionDescription:"--operation-name" parserState
@@ -149,8 +149,8 @@ let handleFragmentDefinition parserState fragmentDefinitionText =
       @ [ fragmentDefinitionText ];
   }
 
-let handleFieldArgument parserState fieldArgumentPair =
-  ignore (CliArgument.valueOfRawValue (snd fieldArgumentPair));
+let handleFieldArgument parserState (name, rawValue) =
+  let fieldArgumentPair = (name, CliArgument.valueOfRawValue rawValue) in
 
   updateBranchOrFallback parserState
     ~onBranch:(fun branch ->
@@ -205,7 +205,7 @@ let handlePositionalToken parserState token =
     when CommandLineInvocationBranch.currentDefaultSelectionPathPrefix
            parserState
          = []
-         && branch.selectionExpressions <> [] ->
+         && branch.selectionPaths <> [] ->
       let finalizedParserState =
         CommandLineInvocationState.finalizedCurrentBranch parserState
       in

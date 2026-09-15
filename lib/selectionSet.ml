@@ -80,21 +80,12 @@ let parsedExpressions fieldExpressions =
 
 let selectionsOfScopedPaths ~capitalizeRootFieldNames scopedPaths =
   scopedPaths
-  |> List.map (fun (_, scopedPath) ->
+  |> List.map (fun (_, segments) ->
       SelectionPath.lowerSelectionPathSegments
-        ~isTargetRoot:capitalizeRootFieldNames
-        (segmentsOfScopedPath scopedPath)
-        [])
+        ~isTargetRoot:capitalizeRootFieldNames segments [])
 
-let ofCliArguments ?(capitalizeRelativeRootFieldNames = false)
-    ?(capitalizeRootFieldNames = false) fieldExpressions =
-  let scopedPaths =
-    fieldExpressions
-    |> List.concat_map (fun fieldExpression ->
-        fieldExpression |> String.split_on_char ',' |> List.map String.trim
-        |> List.filter (fun fieldName -> fieldName <> ""))
-    |> List.map scopeAndFieldPathOfCliField
-  in
+let ofPaths ?(capitalizeRelativeRootFieldNames = false)
+    ?(capitalizeRootFieldNames = false) scopedPaths =
   let relativePaths, rootPaths =
     List.partition (fun (scope, _) -> scope = `Relative) scopedPaths
   in
