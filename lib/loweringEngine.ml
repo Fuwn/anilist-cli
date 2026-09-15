@@ -7,74 +7,11 @@ type request = {
   fragmentDefinitions : GraphQlFragmentDefinition.t list;
 }
 
-let graphQlArgumentsOfOptionPairs optionPairs =
-  optionPairs
-  |> List.map (fun (optionName, optionValue) ->
-      CliArgument.make
-        ~name:(GraphQlName.lowerCamelCaseOfCliToken optionName)
-        ~rawValue:optionValue)
-
 let valuesOfVariableAssignments variableAssignments =
   variableAssignments
   |> List.map (fun (variableName, rawValue) ->
       ( variableName,
         (CliArgument.make ~name:variableName ~rawValue).CliArgument.value ))
-
-let graphQlFieldNameOfSegment ~isTargetRoot fieldName =
-  if isTargetRoot then GraphQlName.upperCamelCaseOfCliToken fieldName
-  else GraphQlName.lowerCamelCaseOfCliToken fieldName
-
-let graphQlTypeCondition typeCondition =
-  GraphQlName.upperCamelCaseOfCliToken typeCondition
-
-let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
-    selectionSet =
-  let lowerTail ~isTargetRoot = function
-    | [] -> selectionSet
-    | remainingSelectionPathSegments ->
-        [
-          lowerSelectionPathSegments ~isTargetRoot
-            remainingSelectionPathSegments selectionSet;
-        ]
-  in
-
-  match selectionPathSegments with
-  | [] ->
-      raise (Invalid_argument "Expected at least one selection path segment")
-  | FieldSegment
-      ({ fieldName; fieldAlias; fieldArgumentPairs; fieldDirectiveTexts } :
-        fieldSegment)
-    :: remainingSelectionPathSegments ->
-      GraphQlSelection.field
-        (GraphQlSelection.makeField ?alias:fieldAlias
-           ~name:(graphQlFieldNameOfSegment ~isTargetRoot fieldName)
-           ~arguments:(graphQlArgumentsOfOptionPairs fieldArgumentPairs)
-           ~directives:fieldDirectiveTexts
-           ~selectionSet:
-             (lowerTail ~isTargetRoot:false remainingSelectionPathSegments)
-           ())
-  | InlineFragmentSegment
-      ({ inlineFragmentTypeCondition; inlineFragmentDirectiveTexts } :
-        inlineFragmentSegment)
-    :: remainingSelectionPathSegments ->
-      GraphQlSelection.inlineFragment
-        (GraphQlSelection.makeInlineFragment
-           ~typeCondition:(graphQlTypeCondition inlineFragmentTypeCondition)
-           ~directives:inlineFragmentDirectiveTexts
-           ~selectionSet:
-             (lowerTail ~isTargetRoot remainingSelectionPathSegments)
-           ())
-  | FragmentSpreadSegment
-      ({ fragmentSpreadName; fragmentSpreadDirectiveTexts } :
-        fragmentSpreadSegment)
-    :: remainingSelectionPathSegments ->
-      if remainingSelectionPathSegments <> [] then
-        raise
-          (Invalid_argument "Fragment spreads cannot contain child selections")
-      else
-        GraphQlSelection.fragmentSpread
-          (GraphQlSelection.makeFragmentSpread ~name:fragmentSpreadName
-             ~directives:fragmentSpreadDirectiveTexts ())
 
 let lowerSelectionBranch ~capitalizeRootFieldNames ~isTargetRoot selectionBranch
     =
@@ -92,7 +29,7 @@ let lowerSelectionBranch ~capitalizeRootFieldNames ~isTargetRoot selectionBranch
       ~capitalizeRootFieldNames selectionBranch.selectionExpressions
   in
   let loweredSelection =
-    lowerSelectionPathSegments ~isTargetRoot
+    SelectionPath.lowerSelectionPathSegments ~isTargetRoot
       selectionBranch.selectionPathSegments
       scopedSelection.SelectionSet.relativeSelectionSet
   in
@@ -128,7 +65,8 @@ let lowerStructuredFragmentDefinition structuredFragmentDefinition =
 
   GraphQlFragmentDefinition.make ~name:structuredFragmentDefinition.fragmentName
     ~typeCondition:
-      (graphQlTypeCondition structuredFragmentDefinition.fragmentTypeCondition)
+      (SelectionPath.graphQlTypeCondition
+         structuredFragmentDefinition.fragmentTypeCondition)
     ~directives:structuredFragmentDefinition.fragmentDirectiveTexts
     ~selectionSet ()
 

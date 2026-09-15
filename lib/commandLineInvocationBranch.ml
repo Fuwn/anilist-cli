@@ -1,39 +1,10 @@
 open CommandLineInvocationTypes
 
-let makeFieldSegment ?fieldAlias fieldName =
-  { fieldName; fieldAlias; fieldArgumentPairs = []; fieldDirectiveTexts = [] }
-
 let makeInlineFragmentSegment inlineFragmentTypeCondition =
   { inlineFragmentTypeCondition; inlineFragmentDirectiveTexts = [] }
 
 let makeFragmentSpreadSegment fragmentSpreadName =
   { fragmentSpreadName; fragmentSpreadDirectiveTexts = [] }
-
-let fieldPathSegmentOfText pathSegmentText =
-  let aliasValue, fieldName =
-    CommandLineInvocationShared.splitAliasAndFieldName
-      (String.trim pathSegmentText)
-  in
-  let trimmedFieldName = String.trim fieldName in
-  if trimmedFieldName = "" then
-    raise
-      (Invalid_argument
-         (Printf.sprintf "Field path cannot be empty.\n\n%s"
-            CommandLineInvocationShared.usageText))
-  else
-    let fieldAlias =
-      match aliasValue with
-      | Some alias when String.trim alias <> "" ->
-          Some (CommandLineInvocationShared.normalizedAlias (String.trim alias))
-      | _ -> None
-    in
-    makeFieldSegment ?fieldAlias trimmedFieldName
-
-let fieldSegmentsOfPath fieldPath =
-  fieldPath |> String.split_on_char '.' |> List.map String.trim
-  |> List.filter (fun segmentText -> segmentText <> "")
-  |> List.map (fun segmentText ->
-      FieldSegment (fieldPathSegmentOfText segmentText))
 
 let segmentsEndInFragmentSpread selectionPathSegments =
   match List.rev selectionPathSegments with
@@ -52,7 +23,8 @@ let makeSelectionBranchFromSegments segments =
   else { selectionPathSegments = segments; selectionExpressions = [] }
 
 let makeSelectionBranchFromFieldPath fieldPath =
-  fieldPath |> fieldSegmentsOfPath |> makeSelectionBranchFromSegments
+  fieldPath |> SelectionPath.fieldSegmentsOfPath
+  |> makeSelectionBranchFromSegments
 
 let updateLastSegment branch mapSegment =
   match List.rev branch.selectionPathSegments with
@@ -81,7 +53,8 @@ let withPushedFieldSelectionPathSegment branch fieldName =
             "Fragment spreads cannot contain child selections.\n\n%s"
             CommandLineInvocationShared.usageText))
   else
-    let newSegments = fieldSegmentsOfPath fieldName in
+    let newSegments = SelectionPath.fieldSegmentsOfPath fieldName in
+
     if newSegments = [] then
       raise
         (Invalid_argument
@@ -211,11 +184,13 @@ let parentSegmentsAndBareText parserState ~currentBranchRequiredMessage pathText
             ensureSelectionPathCanAcceptChildren branch.selectionPathSegments
         | None -> parserState.currentDefaultSelectionPathPrefix
       in
+
       (parentSegments, bareText)
 
 let resolvedSelectionPathSegmentsOfFieldPath parserState fieldPath =
   let nonemptyFieldSegments path =
-    let segments = fieldSegmentsOfPath path in
+    let segments = SelectionPath.fieldSegmentsOfPath path in
+
     if segments = [] then
       raise
         (Invalid_argument
@@ -223,6 +198,7 @@ let resolvedSelectionPathSegmentsOfFieldPath parserState fieldPath =
               CommandLineInvocationShared.usageText))
     else segments
   in
+
   match classifiedBranchPath fieldPath with
   | `Relative, bareFieldPath ->
       currentBranchSegmentsOrRaise parserState
@@ -243,6 +219,7 @@ let resolvedSelectionPathSegmentsOfInlineFragment parserState
       inlineFragmentTypeConditionText
   in
   let normalizedTypeCondition = String.trim typeConditionText in
+
   if normalizedTypeCondition = "" then
     raise
       (Invalid_argument
@@ -264,6 +241,7 @@ let resolvedSelectionPathSegmentsOfFragmentSpread parserState fragmentSpreadText
       fragmentSpreadText
   in
   let normalizedFragmentSpreadName = String.trim fragmentSpreadName in
+
   if normalizedFragmentSpreadName = "" then
     raise
       (Invalid_argument
