@@ -19,8 +19,15 @@
 
 ## Build
 
-Development tests require Python 3 and use only its standard library.
-Run `dune runtest` to execute the OCaml and local HTTP integration tests.
+Use OCaml 5.0 or later, Dune 3.22 or later, and the dependencies declared in
+`anilist.opam`. Install dependencies into your opam switch:
+
+```bash
+opam install . --deps-only --with-test
+```
+
+The declared `lwt_ssl` dependency provides an OpenSSL HTTPS backend. Development
+validation also requires Python 3 for the local HTTP integration tests.
 
 ```bash
 dune build
@@ -53,6 +60,21 @@ Run a query:
 ```bash
 docker run --rm fuwn/anilist media --id 1 --selection-set id,title.romaji,format,status
 ```
+
+The build runs the OCaml and local HTTP integration tests. The build script
+creates a local image by default:
+
+```bash
+scripts/build-docker-image.sh
+```
+
+Publication is explicit: `scripts/build-docker-image.sh --push` publishes
+`latest` and a UTC date tag to `IMAGE_NAME` (default `fuwn/anilist`). It builds
+`PLATFORMS` (default `linux/amd64,linux/arm64`).
+
+## Development
+
+Run `dune build`, `dune runtest`, and `git diff --check` before committing.
 
 ## Shell Script Savings
 
