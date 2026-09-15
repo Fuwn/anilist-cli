@@ -1,5 +1,7 @@
 open CommandLineInvocationTypes
 
+exception HelpRequested
+
 let bareOptionNameOfToken token =
   match CommandLineInvocationShared.optionNameAndValueOfEqualsSyntax token with
   | Some (optionName, _) -> optionName
@@ -234,8 +236,7 @@ let handlePositionalToken parserState token =
 
 let rec parseRemainingArguments parserState = function
   | [] -> CommandLineInvocationState.currentInvocationOfState parserState
-  | "--help" :: _ ->
-      raise (Invalid_argument CommandLineInvocationShared.usageText)
+  | "--help" :: _ -> raise HelpRequested
   | token :: remainingTokens when CommandLineInvocationShared.isLongOption token
     ->
       let updatedParserState, remainingTokens =
@@ -265,8 +266,7 @@ let rec parseRemainingArguments parserState = function
 let invocationOfArguments arguments =
   match arguments with
   | [] -> Error CommandLineInvocationShared.usageText
-  | firstToken :: _ when firstToken = "help" || firstToken = "--help" ->
-      Error CommandLineInvocationShared.usageText
+  | "help" :: _ | "--help" :: _ -> Ok `Help
   | _ -> (
       try
         let invocation =
@@ -274,7 +274,10 @@ let invocationOfArguments arguments =
             arguments
         in
 
-        CommandLineInvocationValidation.validatedInvocation invocation
+        Result.map
+          (fun invocation -> `Invocation invocation)
+          (CommandLineInvocationValidation.validatedInvocation invocation)
       with
+      | HelpRequested -> Ok `Help
       | Invalid_argument message -> Error message
       | Yojson.Json_error message -> Error ("Invalid JSON: " ^ message))

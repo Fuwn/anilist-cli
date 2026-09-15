@@ -163,7 +163,6 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertIn("Missing value", result.stderr)
         self.assertEqual(self.requests, [])
 
-    @unittest.expectedFailure
     def test_trailing_help(self):
         result = self.run_cli("media", "--id", "1", "--help")
 

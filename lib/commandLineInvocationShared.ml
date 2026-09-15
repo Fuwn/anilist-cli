@@ -61,10 +61,6 @@ let usageText =
        --directive include(if: $withCore)";
     ]
 
-let helpRequestedOfArguments = function
-  | [ "help" ] | [ "--help" ] | [ _; "--help" ] -> true
-  | _ -> false
-
 let selectionSetOptionName = "selection-set"
 let compatibilitySelectionSetOptionName = "fields"
 let fieldOptionName = "field"

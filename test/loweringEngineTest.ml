@@ -1,5 +1,11 @@
 open Anilist
 
+let invocationOfArguments arguments =
+  match CommandLineInvocationParser.invocationOfArguments arguments with
+  | Ok (`Invocation invocation) -> Ok invocation
+  | Ok `Help -> Error CommandLineInvocationShared.usageText
+  | Error message -> Error message
+
 let assertEqual expected actual =
   if actual <> expected then
     failwith (Printf.sprintf "Expected:\n%s\n\nActual:\n%s" expected actual)
@@ -424,8 +430,7 @@ let testMultipleOperationDocumentLowering () =
 
 let testSelectionSetCompatibilityAliasParsing () =
   match
-    CommandLineInvocationParser.invocationOfArguments
-      [ "user"; "--name"; "fuwn"; "--fields"; "id" ]
+    invocationOfArguments [ "user"; "--name"; "fuwn"; "--fields"; "id" ]
   with
   | Ok invocation ->
       let operationDefinition =
@@ -440,7 +445,7 @@ let testSelectionSetCompatibilityAliasParsing () =
 
 let testOperationParsing () =
   match
-    CommandLineInvocationParser.invocationOfArguments
+    invocationOfArguments
       [
         "query";
         "--operation-name";
@@ -493,7 +498,7 @@ let testOperationParsing () =
 
 let testVariableAssignmentsPreserveGraphQlVariableNames () =
   match
-    CommandLineInvocationParser.invocationOfArguments
+    invocationOfArguments
       [
         "query";
         "--variable-definition";
@@ -521,7 +526,7 @@ let testVariableAssignmentsPreserveGraphQlVariableNames () =
 
 let testVariableAssignmentsRejectVariableReferences () =
   match
-    CommandLineInvocationParser.invocationOfArguments
+    invocationOfArguments
       [
         "query";
         "--variable";
@@ -553,7 +558,7 @@ let testInlineFragmentsRequireSelections () =
 
 let testRelativeAndAbsoluteFieldPathParsing () =
   match
-    CommandLineInvocationParser.invocationOfArguments
+    invocationOfArguments
       [
         "user";
         "--name";
@@ -603,7 +608,7 @@ let testRelativeAndAbsoluteFieldPathParsing () =
 
 let testExplicitOperationBarePositionalSiblingFields () =
   match
-    CommandLineInvocationParser.invocationOfArguments
+    invocationOfArguments
       [
         "query";
         "user";
@@ -627,7 +632,7 @@ let testExplicitOperationBarePositionalSiblingFields () =
 
 let testInlineFragmentParsing () =
   match
-    CommandLineInvocationParser.invocationOfArguments
+    invocationOfArguments
       [
         "query";
         "--field";
@@ -660,7 +665,7 @@ let testInlineFragmentParsing () =
 
 let testFragmentSpreadParsing () =
   match
-    CommandLineInvocationParser.invocationOfArguments
+    invocationOfArguments
       [
         "query";
         "--field";
@@ -703,7 +708,7 @@ let testFragmentSpreadParsing () =
 
 let testMultipleOperationsRequireSelectedOperationName () =
   match
-    CommandLineInvocationParser.invocationOfArguments
+    invocationOfArguments
       [
         "--operation";
         "query:Viewer";
@@ -724,7 +729,7 @@ let testMultipleOperationsRequireSelectedOperationName () =
 
 let testMultipleOperationParsing () =
   match
-    CommandLineInvocationParser.invocationOfArguments
+    invocationOfArguments
       [
         "--operation";
         "query:Viewer";
@@ -887,24 +892,6 @@ let testRequestHeaderExtractionRejectsMissingHeaderValue () =
   | Error message ->
       assertContainsSubstring "Missing value for option --header." message
 
-let testCommandLineHelpDetection () =
-  if not (CommandLineInvocationShared.helpRequestedOfArguments [ "--help" ])
-  then failwith "Expected top-level help detection";
-
-  if
-    not
-      (CommandLineInvocationShared.helpRequestedOfArguments
-         [ "query"; "--help" ])
-  then failwith "Expected trailing flag help detection";
-
-  if CommandLineInvocationShared.helpRequestedOfArguments [ "--bogus"; "help" ]
-  then failwith "Unexpected bare help token detection";
-
-  if
-    CommandLineInvocationShared.helpRequestedOfArguments
-      [ "query"; "--help"; "extra" ]
-  then failwith "Unexpected non-trailing help detection"
-
 let testSchemaHelpDetection () =
   if not (SchemaArgumentParser.helpRequestedOfArguments [ "schema"; "--help" ])
   then failwith "Expected schema help detection";
@@ -945,5 +932,4 @@ let () =
   testRequestHeaderExtraction ();
   testRequestHeaderExtractionRejectsMalformedHeader ();
   testRequestHeaderExtractionRejectsMissingHeaderValue ();
-  testCommandLineHelpDetection ();
   testSchemaHelpDetection ()

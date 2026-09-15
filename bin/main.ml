@@ -11,6 +11,7 @@ let printResponse statusCode responseBody =
   let printableResponse =
     GraphQlTransport.prettyPrintedJsonOrOriginal responseBody
   in
+
   if statusCode >= 200 && statusCode < 300 then (
     print_endline printableResponse;
     Lwt.return 0)
@@ -20,6 +21,7 @@ let printResponse statusCode responseBody =
 
 let executeQuery ~headers ~operationName ~variables ~query =
   let endpoint = GraphQlTransport.endpointOfEnvironment () in
+
   GraphQlTransport.executeQuery ~operationName ~variables ~headers ~endpoint
     ~query
   >>= fun (statusCode, responseBody) -> printResponse statusCode responseBody
@@ -49,12 +51,14 @@ let run ~headers invocation =
                      (variableName, CliArgument.jsonLiteralOfValue variableValue))
                  ))
       in
+
       executeQuery ~headers
         ~operationName:loweredRequest.LoweringEngine.selectedOperationName
         ~variables ~query)
 
 let () =
   let arguments = List.tl (Array.to_list Sys.argv) in
+
   match RequestOptions.extractionOfArguments arguments with
   | Error message -> printAndExit stderr 1 message
   | Ok requestOptions -> (
@@ -67,6 +71,7 @@ let () =
             (Lwt_main.run
                (runProtected (fun () ->
                     let endpoint = GraphQlTransport.endpointOfEnvironment () in
+
                     SchemaCommand.execute
                       ~headers:requestOptions.RequestOptions.headerPairs
                       ~endpoint schemaCommand
@@ -83,14 +88,11 @@ let () =
             CommandLineInvocationParser.invocationOfArguments
               requestOptions.RequestOptions.remainingArguments
           with
-          | Ok invocation ->
+          | Ok `Help ->
+              printAndExit stdout 0 CommandLineInvocationShared.usageText
+          | Ok (`Invocation invocation) ->
               exit
                 (Lwt_main.run
                    (run ~headers:requestOptions.RequestOptions.headerPairs
                       invocation))
-          | Error message ->
-              if
-                CommandLineInvocationShared.helpRequestedOfArguments
-                  requestOptions.RequestOptions.remainingArguments
-              then printAndExit stdout 0 message
-              else printAndExit stderr 1 message))
+          | Error message -> printAndExit stderr 1 message))
