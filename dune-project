@@ -13,7 +13,6 @@
  (bug_reports "https://github.com/Fuwn/anilist-cli/issues")
  (depends
   (ocaml (>= 5.0))
-  cmdliner
   cohttp-lwt-unix
   lwt
   uri

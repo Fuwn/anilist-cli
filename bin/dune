@@ -1,7 +1,7 @@
 (executables
  (names main)
  (public_names anilist)
- (libraries anilist cmdliner cohttp-lwt-unix lwt yojson uri)
+ (libraries anilist lwt yojson)
  (modules main)
  (flags
   (:standard -warn-error +a)))
