@@ -137,7 +137,6 @@ class CliIntegrationTest(unittest.TestCase):
             "query {\n  __typename\n  Media {\n    id\n  }\n  Media {\n    title {\n      romaji\n    }\n  }\n}",
         )
 
-    @unittest.expectedFailure
     def test_inline_fragment_syntax_agrees(self):
         self.run_cli(
             "query", "--inline-fragment", "Query", "--selection-set", "viewer.id"

@@ -29,14 +29,15 @@ let graphQlTypeCondition typeCondition =
 
 let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
     selectionSet =
-  let lowerTail = function
+  let lowerTail ~isTargetRoot = function
     | [] -> selectionSet
     | remainingSelectionPathSegments ->
         [
-          lowerSelectionPathSegments ~isTargetRoot:false
+          lowerSelectionPathSegments ~isTargetRoot
             remainingSelectionPathSegments selectionSet;
         ]
   in
+
   match selectionPathSegments with
   | [] ->
       raise (Invalid_argument "Expected at least one selection path segment")
@@ -49,7 +50,8 @@ let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
            ~name:(graphQlFieldNameOfSegment ~isTargetRoot fieldName)
            ~arguments:(graphQlArgumentsOfOptionPairs fieldArgumentPairs)
            ~directives:fieldDirectiveTexts
-           ~selectionSet:(lowerTail remainingSelectionPathSegments)
+           ~selectionSet:
+             (lowerTail ~isTargetRoot:false remainingSelectionPathSegments)
            ())
   | InlineFragmentSegment
       ({ inlineFragmentTypeCondition; inlineFragmentDirectiveTexts } :
@@ -59,7 +61,8 @@ let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
         (GraphQlSelection.makeInlineFragment
            ~typeCondition:(graphQlTypeCondition inlineFragmentTypeCondition)
            ~directives:inlineFragmentDirectiveTexts
-           ~selectionSet:(lowerTail remainingSelectionPathSegments)
+           ~selectionSet:
+             (lowerTail ~isTargetRoot remainingSelectionPathSegments)
            ())
   | FragmentSpreadSegment
       ({ fragmentSpreadName; fragmentSpreadDirectiveTexts } :
@@ -75,8 +78,17 @@ let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
 
 let lowerSelectionBranch ~capitalizeRootFieldNames ~isTargetRoot selectionBranch
     =
+  let selectionsRemainAtRoot =
+    isTargetRoot
+    && List.for_all
+         (function
+           | InlineFragmentSegment _ -> true
+           | FieldSegment _ | FragmentSpreadSegment _ -> false)
+         selectionBranch.selectionPathSegments
+  in
   let scopedSelection =
-    SelectionSet.ofCliArguments ~capitalizeRelativeRootFieldNames:false
+    SelectionSet.ofCliArguments
+      ~capitalizeRelativeRootFieldNames:selectionsRemainAtRoot
       ~capitalizeRootFieldNames selectionBranch.selectionExpressions
   in
   let loweredSelection =
@@ -84,6 +96,7 @@ let lowerSelectionBranch ~capitalizeRootFieldNames ~isTargetRoot selectionBranch
       selectionBranch.selectionPathSegments
       scopedSelection.SelectionSet.relativeSelectionSet
   in
+
   (loweredSelection, scopedSelection.SelectionSet.rootSelectionSet)
 
 let selectionSetOfTarget ~capitalizeRootFieldNames ~rootSelectionExpressions
@@ -99,6 +112,7 @@ let selectionSetOfTarget ~capitalizeRootFieldNames ~rootSelectionExpressions
          (lowerSelectionBranch ~capitalizeRootFieldNames
             ~isTargetRoot:capitalizeRootFieldNames)
   in
+
   rootScopedSelection.SelectionSet.relativeSelectionSet
   @ rootScopedSelection.SelectionSet.rootSelectionSet
   @ List.map fst loweredBranches
@@ -111,6 +125,7 @@ let lowerStructuredFragmentDefinition structuredFragmentDefinition =
         structuredFragmentDefinition.fragmentRootSelectionExpressions
       ~selectionBranches:structuredFragmentDefinition.fragmentSelectionBranches
   in
+
   GraphQlFragmentDefinition.make ~name:structuredFragmentDefinition.fragmentName
     ~typeCondition:
       (graphQlTypeCondition structuredFragmentDefinition.fragmentTypeCondition)
@@ -137,6 +152,7 @@ let lowerOperationDefinition
       ~directives:operationDirectiveTexts ~operationType
       ~selectionSet:operationSelectionSet ()
   in
+
   (operation, valuesOfVariableAssignments variableAssignments)
 
 let selectedOperationAndVariables operations selectedOperationName =
@@ -148,9 +164,10 @@ let selectedOperationAndVariables operations selectedOperationName =
         |> List.find (fun (operation, _) ->
             operation.GraphQlOperation.name = Some selectedOperationName)
       in
+
       (Some selectedOperationName, variableAssignments)
 
-(* Assumes a validated invocation (see CommandLineInvocationValidation):
+(* The lowerer assumes a validated invocation (see CommandLineInvocationValidation):
    operation names are unique, and the selected operation name exists whenever
    the document requires one. *)
 let lower (invocation : CommandLineInvocationTypes.t) =
@@ -167,6 +184,7 @@ let lower (invocation : CommandLineInvocationTypes.t) =
     @ (invocation.rawFragmentDefinitionTexts
       |> List.map GraphQlFragmentDefinition.makeRaw)
   in
+
   {
     operations = loweredOperations |> List.map fst;
     selectedOperationName;
