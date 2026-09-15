@@ -144,14 +144,12 @@ class CliIntegrationTest(unittest.TestCase):
         self.run_cli("query", "--selection-set", "...on:Query.viewer.id")
         self.assertEqual(self.requests[0][0], self.requests[1][0])
 
-    @unittest.expectedFailure
     def test_empty_selection_is_local_error(self):
         result = self.run_cli("query", "--selection-set", "")
 
         self.assertEqual(result.returncode, 1)
         self.assertEqual(self.requests, [])
 
-    @unittest.expectedFailure
     def test_empty_spread_is_local_error(self):
         result = self.run_cli("query", "--selection-set", "...")
 
@@ -174,7 +172,6 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(result.stderr, "")
         self.assertEqual(self.requests, [])
 
-    @unittest.expectedFailure
     def test_invalid_json_is_local_error(self):
         result = self.run_cli("media", "--id", "json:broken", "--selection-set", "id")
 
@@ -218,6 +215,20 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.requests[0][0]["variables"], {"name": "--value"})
         self.assertIn('name: "--value"', self.requests[0][0]["query"])
+
+    def test_empty_scopes_and_fragments(self):
+        for expression in [", ,", "root:", "/", "...on:Media."]:
+            with self.subTest(expression=expression):
+                result = self.run_cli("query", "--selection-set", expression)
+
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(self.requests, [])
+
+    def test_unfinished_inline_fragment_is_local_error(self):
+        result = self.run_cli("query", "--inline-fragment", "Query")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.requests, [])
 
 
 if __name__ == "__main__":

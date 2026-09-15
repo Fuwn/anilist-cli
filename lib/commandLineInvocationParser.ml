@@ -71,6 +71,8 @@ let handleFragment parserState fragmentText =
     fragmentName fragmentTypeCondition
 
 let handleSelectionSet parserState selectionExpression =
+  ignore (SelectionSet.parsedExpressions [ selectionExpression ]);
+
   updateBranchOrFallback parserState
     ~onBranch:(fun branch ->
       CommandLineInvocationBranch.withAddedBranchSelectionExpression branch
@@ -110,6 +112,8 @@ let handleVariable parserState variableAssignmentText =
       })
 
 let handleDirective parserState directiveText =
+  let directiveText = GraphQlSelection.renderDirectiveText directiveText in
+
   updateBranchOrFallback parserState
     ~onBranch:(fun branch ->
       CommandLineInvocationBranch.withAddedBranchDirective branch directiveText)
@@ -129,6 +133,11 @@ let handleAlias parserState fieldAlias =
               CommandLineInvocationShared.usageText)))
 
 let handleFragmentDefinition parserState fragmentDefinitionText =
+  let fragmentDefinitionText = String.trim fragmentDefinitionText in
+
+  if fragmentDefinitionText = "" then
+    invalid_arg "Fragment definition text cannot be empty.";
+
   let finalizedParserState =
     CommandLineInvocationState.finalizedAllPending parserState
   in
@@ -141,6 +150,8 @@ let handleFragmentDefinition parserState fragmentDefinitionText =
   }
 
 let handleFieldArgument parserState fieldArgumentPair =
+  ignore (CliArgument.valueOfRawValue (snd fieldArgumentPair));
+
   updateBranchOrFallback parserState
     ~onBranch:(fun branch ->
       CommandLineInvocationBranch.withAddedBranchFieldArgumentPair branch
@@ -264,4 +275,6 @@ let invocationOfArguments arguments =
         in
 
         CommandLineInvocationValidation.validatedInvocation invocation
-      with Invalid_argument message -> Error message)
+      with
+      | Invalid_argument message -> Error message
+      | Yojson.Json_error message -> Error ("Invalid JSON: " ^ message))

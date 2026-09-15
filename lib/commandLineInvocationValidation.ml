@@ -12,6 +12,15 @@ let structuredFragmentsHaveSelections structuredFragmentDefinitions =
       fragmentDefinition.fragmentRootSelectionExpressions <> []
       || fragmentDefinition.fragmentSelectionBranches <> [])
 
+let branchHasCompleteInlineFragment branch =
+  match List.rev branch.selectionPathSegments with
+  | InlineFragmentSegment _ :: _ ->
+      List.exists
+        (fun (scope, _) -> scope = `Relative)
+        (SelectionSet.parsedExpressions branch.selectionExpressions)
+  | FieldSegment _ :: _ | FragmentSpreadSegment _ :: _ -> true
+  | [] -> false
+
 let duplicateNames names =
   let rec loop seenNames duplicates = function
     | [] -> duplicates
@@ -20,6 +29,7 @@ let duplicateNames names =
           loop seenNames (name :: duplicates) remainingNames
         else loop (name :: seenNames) duplicates remainingNames
   in
+
   names |> loop [] [] |> List.rev |> List.sort_uniq String.compare
 
 let validatedInvocation invocation =
@@ -41,6 +51,19 @@ let validatedInvocation invocation =
     Error
       (Printf.sprintf "Each structured fragment requires a selection set.\n\n%s"
          CommandLineInvocationShared.usageText)
+  else if
+    not
+      (List.for_all
+         (fun operation ->
+           List.for_all branchHasCompleteInlineFragment
+             operation.selectionBranches)
+         invocation.operationDefinitions
+      && List.for_all
+           (fun fragment ->
+             List.for_all branchHasCompleteInlineFragment
+               fragment.fragmentSelectionBranches)
+           invocation.structuredFragmentDefinitions)
+  then Error "Inline fragments require a selection set."
   else
     let operationNames =
       invocation.operationDefinitions
@@ -48,6 +71,7 @@ let validatedInvocation invocation =
           operationDefinition.operationName)
     in
     let duplicateOperationNames = duplicateNames operationNames in
+
     if duplicateOperationNames <> [] then
       Error
         (Printf.sprintf "Operation names must be unique.\n\n%s"
