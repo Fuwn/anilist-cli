@@ -10,3 +10,9 @@
  (deps cliIntegrationTest.py)
  (action
   (run python3 %{dep:cliIntegrationTest.py} %{exe:../bin/main.exe})))
+
+(rule
+ (alias runtest)
+ (deps buildDockerImageTest.py ../scripts/build-docker-image.sh)
+ (action
+  (run python3 %{dep:buildDockerImageTest.py} %{dep:../scripts/build-docker-image.sh})))

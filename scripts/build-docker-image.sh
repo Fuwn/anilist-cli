@@ -3,13 +3,24 @@
 set -eu
 
 image_name="${IMAGE_NAME:-fuwn/anilist}"
-platforms="${PLATFORMS:-linux/amd64,linux/arm64}"
-push_flag="${PUSH_FLAG:---push}"
-utc_date_tag="$(date -u +%F)"
 
-docker buildx build \
-	--platform "${platforms}" \
-	--tag "${image_name}:latest" \
-	--tag "${image_name}:${utc_date_tag}" \
-	"${push_flag}" \
-	.
+case "$*" in
+"")
+	exec docker build --tag "${image_name}:latest" .
+	;;
+--push)
+	platforms="${PLATFORMS:-linux/amd64,linux/arm64}"
+	utc_date_tag="$(date -u +%F)"
+
+	exec docker buildx build \
+		--platform "${platforms}" \
+		--tag "${image_name}:latest" \
+		--tag "${image_name}:${utc_date_tag}" \
+		--push \
+		.
+	;;
+*)
+	printf '%s\n' 'Usage: scripts/build-docker-image.sh [--push]' >&2
+	exit 2
+	;;
+esac
