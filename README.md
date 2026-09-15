@@ -19,6 +19,9 @@
 
 ## Build
 
+Development tests require Python 3 and use only its standard library.
+Run `dune runtest` to execute the OCaml and local HTTP integration tests.
+
 ```bash
 dune build
 ```

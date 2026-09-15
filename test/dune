@@ -4,3 +4,9 @@
  (libraries anilist)
  (flags
   (:standard -warn-error +a)))
+
+(rule
+ (alias runtest)
+ (deps cliIntegrationTest.py)
+ (action
+  (run python3 %{dep:cliIntegrationTest.py} %{exe:../bin/main.exe})))

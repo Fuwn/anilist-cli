@@ -3,7 +3,7 @@ FROM ocaml/opam:debian-12-ocaml-5.2 AS build
 WORKDIR /src
 
 RUN sudo apt-get update \
- && sudo apt-get install -y --no-install-recommends libgmp-dev libssl-dev m4 pkg-config \
+ && sudo apt-get install -y --no-install-recommends libgmp-dev libssl-dev m4 pkg-config python3 \
  && sudo rm -rf /var/lib/apt/lists/*
 
 COPY --chown=opam:opam anilist.opam dune-project ./

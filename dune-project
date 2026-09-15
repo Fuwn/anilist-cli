@@ -14,6 +14,7 @@
  (depends
   (ocaml (>= 5.0))
   cohttp-lwt-unix
+  (conf-python-3 :with-test)
   lwt
   uri
   yojson))
