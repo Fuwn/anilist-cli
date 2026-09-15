@@ -229,6 +229,61 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(self.requests, [])
 
+    def test_operation_and_fragment_order(self):
+        result = self.run_cli(
+            "--operation",
+            "query:First",
+            "--variable",
+            "id=1",
+            "--field",
+            "viewer",
+            "--selection-set",
+            "id",
+            "--fragment",
+            "core:Media",
+            "--selection-set",
+            "id",
+            "--operation",
+            "query:Second",
+            "--variable",
+            "id=2",
+            "--field",
+            "media",
+            "--selection-set",
+            "...core",
+            "--fragment",
+            "extra:Media",
+            "--selection-set",
+            "title.romaji",
+            "--execute-operation-name",
+            "Second",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        request = self.requests[0][0]
+        query = request["query"]
+
+        self.assertEqual(request["operationName"], "Second")
+        self.assertEqual(request["variables"], {"id": 2})
+        self.assertLess(query.index("query First"), query.index("query Second"))
+        self.assertLess(query.index("fragment core"), query.index("fragment extra"))
+
+    def test_fragment_target_rejects_operation_options(self):
+        result = self.run_cli(
+            "query",
+            "--selection-set",
+            "viewer.id",
+            "--fragment",
+            "core:Media",
+            "--variable",
+            "id=1",
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("requires a current operation", result.stderr)
+        self.assertEqual(self.requests, [])
+
 
 if __name__ == "__main__":
     unittest.main()

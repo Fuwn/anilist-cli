@@ -57,13 +57,16 @@ type t = {
   rawFragmentDefinitionTexts : string list;
 }
 
+type selectionTarget =
+  | OperationTarget of operationDefinition
+  | FragmentTarget of structuredFragmentDefinition
+
 type parserState = {
   finalizedOperationDefinitions : operationDefinition list;
-  currentOperationDefinition : operationDefinition option;
+  currentTarget : selectionTarget option;
   currentDefaultSelectionPathPrefix : selectionPathSegment list;
   currentBranch : selectionBranch option;
   requestedOperationName : string option;
   finalizedStructuredFragmentDefinitions : structuredFragmentDefinition list;
-  currentStructuredFragmentDefinition : structuredFragmentDefinition option;
   pendingRawFragmentDefinitionTexts : string list;
 }

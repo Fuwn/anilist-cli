@@ -30,13 +30,14 @@ let replaceCurrentSelectionBranchWithSegments parserState resolvedSegments =
        resolvedSegments)
 
 let withCurrentOperationOrRaise ~optionDescription parserState mapOperation =
-  match parserState.currentOperationDefinition with
-  | Some operationDefinition ->
+  match parserState.currentTarget with
+  | Some (OperationTarget operationDefinition) ->
       {
         parserState with
-        currentOperationDefinition = Some (mapOperation operationDefinition);
+        currentTarget =
+          Some (OperationTarget (mapOperation operationDefinition));
       }
-  | None ->
+  | None | Some (FragmentTarget _) ->
       raise
         (Invalid_argument
            (Printf.sprintf "%s requires a current operation.\n\n%s"
@@ -220,8 +221,8 @@ let handlePositionalToken parserState token =
         (CommandLineInvocationBranch.withPushedFieldSelectionPathSegment branch
            token)
   | None -> (
-      match parserState.currentOperationDefinition with
-      | None -> (
+      match parserState.currentTarget with
+      | None | Some (FragmentTarget _) -> (
           match CommandLineInvocationShared.operationTypeOfToken token with
           | Some operationType ->
               CommandLineInvocationState.startedOperationDefinition parserState
@@ -229,7 +230,7 @@ let handlePositionalToken parserState token =
           | None ->
               CommandLineInvocationState.startedShorthandQueryOperation
                 parserState token)
-      | Some _ ->
+      | Some (OperationTarget _) ->
           replaceCurrentSelectionBranchWithSegments parserState
             (CommandLineInvocationBranch
              .resolvedSelectionPathSegmentsOfFieldPath parserState token))
