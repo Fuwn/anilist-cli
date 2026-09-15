@@ -8,8 +8,7 @@ RUN sudo apt-get update \
 
 COPY --chown=opam:opam anilist.opam dune-project ./
 
-RUN opam install . --deps-only --with-test -y \
- && opam install tls-lwt -y
+RUN opam install . --deps-only --with-test -y
 
 COPY --chown=opam:opam . .
 
