@@ -15,17 +15,11 @@ let enumPrefix = "enum:"
 let variablePrefix = "var:"
 let jsonPrefix = "json:"
 
-let graphQlStringLiteral value =
-  let jsonLiteral = Yojson.Safe.to_string (`String value) in
-  let escapedValue =
-    if String.length jsonLiteral >= 2 then
-      String.sub jsonLiteral 1 (String.length jsonLiteral - 2)
-    else jsonLiteral
-  in
-  Printf.sprintf "\"%s\"" escapedValue
+let graphQlStringLiteral value = Yojson.Safe.to_string (`String value)
 
 let graphQlFloatLiteral value =
   let literal = Yojson.Safe.to_string (`Float value) in
+
   if
     String.contains literal '.'
     || String.contains literal 'e'
@@ -45,11 +39,7 @@ let rec graphQlLiteralOfJson = function
       |> List.map (fun (name, value) ->
           Printf.sprintf "%s: %s" name (graphQlLiteralOfJson value))
       |> String.concat ", " |> Printf.sprintf "{ %s }"
-  | `List values ->
-      values
-      |> List.map graphQlLiteralOfJson
-      |> String.concat ", " |> Printf.sprintf "[%s]"
-  | `Tuple values ->
+  | `List values | `Tuple values ->
       values
       |> List.map graphQlLiteralOfJson
       |> String.concat ", " |> Printf.sprintf "[%s]"
@@ -111,6 +101,7 @@ let valueOfRawValue rawValue =
                   String.length rawValue > 1
                   && match rawValue.[0] with '{' | '[' -> true | _ -> false
                 in
+
                 if seemsJson then
                   try Json (Yojson.Safe.from_string rawValue)
                   with Yojson.Json_error _ -> String rawValue
