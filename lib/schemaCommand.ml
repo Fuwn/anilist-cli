@@ -2,52 +2,48 @@ open Lwt.Infix
 
 let filterDirectiveResponse ~directiveName responseBody =
   let filteredDirectives directives =
-    directives
-    |> List.filter (function
-      | `Assoc association -> (
-          match List.assoc_opt "name" association with
-          | Some (`String name) -> String.equal name directiveName
-          | _ -> false)
-      | _ -> false)
+    List.filter
+      (fun directive ->
+        Yojson.Safe.Util.member "name" directive = `String directiveName)
+      directives
   in
+
   try
     match Yojson.Safe.from_string responseBody with
+    | `Assoc rootAssociation when List.mem_assoc "errors" rootAssociation ->
+        Ok responseBody
     | `Assoc rootAssociation -> (
-        let preservedTopLevelFields =
-          rootAssociation
-          |> List.filter (fun (fieldName, _) ->
-              not (String.equal fieldName "data"))
-        in
         match List.assoc_opt "data" rootAssociation with
         | Some (`Assoc dataAssociation) -> (
             match List.assoc_opt "__schema" dataAssociation with
             | Some (`Assoc schemaAssociation) -> (
                 match List.assoc_opt "directives" schemaAssociation with
                 | Some (`List directives) ->
+                    let replaceField name value fields =
+                      List.map
+                        (fun (fieldName, fieldValue) ->
+                          ( fieldName,
+                            if fieldName = name then value else fieldValue ))
+                        fields
+                    in
+                    let schema =
+                      `Assoc
+                        (replaceField "directives"
+                           (`List (filteredDirectives directives))
+                           schemaAssociation)
+                    in
+                    let data =
+                      `Assoc (replaceField "__schema" schema dataAssociation)
+                    in
+
                     Ok
-                      (`Assoc
-                         (( "data",
-                            `Assoc
-                              [
-                                ( "__schema",
-                                  `Assoc
-                                    [
-                                      ( "directives",
-                                        `List (filteredDirectives directives) );
-                                    ] );
-                              ] )
-                         :: preservedTopLevelFields)
+                      (`Assoc (replaceField "data" data rootAssociation)
                       |> Yojson.Safe.pretty_to_string)
-                | _ ->
-                    Error
-                      "Schema directive response did not contain a directives \
-                       list.")
-            | _ -> Error "Schema directive response did not contain __schema.")
-        | _ -> Error "Schema directive response did not contain data.")
-    | _ -> Error "Schema directive response was not a JSON object."
-  with Yojson.Json_error message ->
-    Error
-      (Printf.sprintf "Failed to parse schema directive response: %s" message)
+                | _ -> Ok responseBody)
+            | _ -> Ok responseBody)
+        | _ -> Ok responseBody)
+    | _ -> Ok responseBody
+  with Yojson.Json_error _ | Yojson.Safe.Util.Type_error _ -> Ok responseBody
 
 let execute ~headers ~endpoint (schemaCommand : SchemaCommandTypes.t) =
   GraphQlTransport.executeQuery

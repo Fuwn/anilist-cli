@@ -115,6 +115,13 @@ The endpoint defaults to `https://graphql.anilist.co`. Override it with `ANILIST
 ANILIST_GRAPHQL_ENDPOINT='https://graphql.anilist.co' anilist media --id 1 --selection-set id,title.romaji
 ```
 
+## Request Results
+
+HTTP 2xx responses print to stdout and exit 0; other HTTP statuses print to stderr
+and exit 1. GraphQL `errors` inside an HTTP 2xx response remain in the JSON output
+and do not change the exit status. Scripts should inspect the response when they
+need GraphQL-level success detection.
+
 ## License
 
 Licensed under the GNU Affero General Public License v3.0 only. See [LICENSE](./LICENSE).

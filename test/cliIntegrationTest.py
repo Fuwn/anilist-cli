@@ -179,7 +179,6 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertNotIn("Request failed", result.stderr)
         self.assertEqual(self.requests, [])
 
-    @unittest.expectedFailure
     def test_schema_preserves_graphql_error(self):
         self.response = {"data": None, "errors": [{"message": "Upstream diagnostic"}]}
         result = self.run_cli("schema", "--directive", "include")
@@ -283,6 +282,32 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("requires a current operation", result.stderr)
         self.assertEqual(self.requests, [])
+
+    def test_schema_filters_only_directives(self):
+        self.response = {
+            "data": {
+                "__schema": {
+                    "directives": [{"name": "include"}, {"name": "skip"}],
+                    "extra": 1,
+                }
+            },
+            "extensions": {"trace": "kept"},
+        }
+        result = self.run_cli("schema", "--directive", "include")
+        expected = {
+            "data": {"__schema": {"directives": [{"name": "include"}], "extra": 1}},
+            "extensions": {"trace": "kept"},
+        }
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), expected)
+
+    def test_unrecognized_schema_response_survives(self):
+        self.response = {"notice": "No schema available"}
+        result = self.run_cli("schema", "--directive", "include")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), self.response)
 
 
 if __name__ == "__main__":
