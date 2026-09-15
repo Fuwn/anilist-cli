@@ -21,7 +21,11 @@ let pathSegmentOfCliSegment ~capitalizeFieldName segment =
       GraphQlName.upperCamelCaseOfCliToken (String.trim fieldName)
     else GraphQlName.lowerCamelCaseOfCliToken (String.trim fieldName)
   in
-  if normalizedFieldName = "" then invalid_arg "Field path cannot be empty"
+
+  if String.trim fieldName = "" then
+    invalid_arg
+      (Printf.sprintf "Field path cannot be empty.\n\n%s"
+         CommandLineInvocationShared.usageText)
   else { alias = normalizedAlias; name = normalizedFieldName }
 
 let pathSegmentsOfCliField ~capitalizeRootFieldNames fieldPath =
@@ -33,7 +37,8 @@ let pathSegmentsOfCliField ~capitalizeRootFieldNames fieldPath =
         fieldName)
 
 let rec fieldOfPathSegments = function
-  | [] -> raise (Invalid_argument "Field path cannot be empty")
+  | [] ->
+      raise (Invalid_argument "Expected at least one selection path segment")
   | [ pathSegment ] ->
       GraphQlSelection.field
         (GraphQlSelection.makeField ?alias:pathSegment.alias
@@ -41,6 +46,7 @@ let rec fieldOfPathSegments = function
            ())
   | pathSegment :: remainingSegments ->
       let childField = fieldOfPathSegments remainingSegments in
+
       GraphQlSelection.field
         (GraphQlSelection.makeField ?alias:pathSegment.alias
            ~name:pathSegment.name ~arguments:[] ~directives:[]
@@ -58,27 +64,23 @@ let scopeAndFieldPathOfCliField fieldPath =
 
 let selectionOfInlineFragmentPath ~capitalizeRootFieldNames inlineFragmentPath =
   match String.split_on_char '.' inlineFragmentPath with
-  | [] | [ "" ] -> invalid_arg "Inline fragment path cannot be empty"
-  | typeCondition :: remainingSegments ->
-      let normalizedTypeCondition =
-        GraphQlName.upperCamelCaseOfCliToken (String.trim typeCondition)
+  | typeCondition :: (_ :: _ as remainingSegments)
+    when String.trim typeCondition <> "" ->
+      let paths =
+        String.concat "." remainingSegments
+        |> pathSegmentsOfCliField ~capitalizeRootFieldNames
       in
-      if normalizedTypeCondition = "" then
-        invalid_arg "Inline fragment type cannot be empty"
-      else if remainingSegments = [] then
-        invalid_arg "Inline fragments require a selection set"
-      else
-        let selectionSet =
-          let fieldPath = String.concat "." remainingSegments in
-          [
-            fieldPath
-            |> pathSegmentsOfCliField ~capitalizeRootFieldNames
-            |> fieldOfPathSegments;
-          ]
-        in
-        GraphQlSelection.inlineFragment
-          (GraphQlSelection.makeInlineFragment
-             ~typeCondition:normalizedTypeCondition ~selectionSet ())
+      let selectionSet =
+        match paths with [] -> [] | _ -> [ fieldOfPathSegments paths ]
+      in
+
+      GraphQlSelection.inlineFragment
+        (GraphQlSelection.makeInlineFragment
+           ~typeCondition:
+             (GraphQlName.upperCamelCaseOfCliToken (String.trim typeCondition))
+           ~selectionSet ())
+  | _ ->
+      invalid_arg "Inline fragments require a type condition and selection set"
 
 let selectionsOfScopedPaths ~capitalizeRootFieldNames scopedPaths =
   scopedPaths |> List.map snd
@@ -88,10 +90,12 @@ let selectionsOfScopedPaths ~capitalizeRootFieldNames scopedPaths =
           StringPrefix.valueWithoutPrefix ~prefix:fragmentSpreadPrefix
             scopedPath
         in
+
         if String.starts_with ~prefix:"on:" spreadTarget then
           let inlineFragmentPath =
             StringPrefix.valueWithoutPrefix ~prefix:"on:" spreadTarget
           in
+
           selectionOfInlineFragmentPath ~capitalizeRootFieldNames
             inlineFragmentPath
         else
@@ -114,6 +118,7 @@ let ofCliArguments ?(capitalizeRelativeRootFieldNames = false)
   let relativePaths, rootPaths =
     List.partition (fun (scope, _) -> scope = `Relative) scopedPaths
   in
+
   {
     relativeSelectionSet =
       selectionsOfScopedPaths
