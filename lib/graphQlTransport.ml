@@ -7,6 +7,16 @@ let endpointOfEnvironment () =
   | Some endpoint when endpoint <> "" -> endpoint
   | _ -> defaultEndpoint
 
+let requestTimeoutSeconds () =
+  match Sys.getenv_opt "ANILIST_REQUEST_TIMEOUT_SECONDS" with
+  | None -> 30.
+  | Some text -> (
+      match float_of_string_opt text with
+      | Some seconds when Float.is_finite seconds && seconds > 0. -> seconds
+      | Some _ | None ->
+          invalid_arg
+            "ANILIST_REQUEST_TIMEOUT_SECONDS must be a positive finite number")
+
 let executeQuery ~operationName ~variables ~headers:additionalHeaders ~endpoint
     ~query =
   let requestBodyFields = [ ("query", `String query) ] in
@@ -35,11 +45,21 @@ let executeQuery ~operationName ~variables ~headers:additionalHeaders ~endpoint
   in
   let uri = Uri.of_string endpoint in
   let body = Cohttp_lwt.Body.of_string requestBody in
-  Cohttp_lwt_unix.Client.post ~headers ~body uri
-  >>= fun (response, responseBody) ->
-  Cohttp_lwt.Body.to_string responseBody >|= fun responseBodyText ->
-  ( Cohttp.Response.status response |> Cohttp.Code.code_of_status,
-    responseBodyText )
+  let timeoutSeconds = requestTimeoutSeconds () in
+
+  Lwt.catch
+    (fun () ->
+      Lwt_unix.with_timeout timeoutSeconds (fun () ->
+          Cohttp_lwt_unix.Client.post ~headers ~body uri
+          >>= fun (response, responseBody) ->
+          Cohttp_lwt.Body.to_string responseBody >|= fun responseBodyText ->
+          ( Cohttp.Response.status response |> Cohttp.Code.code_of_status,
+            responseBodyText )))
+    (function
+      | Lwt_unix.Timeout ->
+          Lwt.fail_with
+            (Printf.sprintf "Request timed out after %g seconds" timeoutSeconds)
+      | exceptionValue -> Lwt.fail exceptionValue)
 
 let prettyPrintedJsonOrOriginal responseBody =
   try responseBody |> Yojson.Safe.from_string |> Yojson.Safe.pretty_to_string

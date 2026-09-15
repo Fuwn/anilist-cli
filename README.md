@@ -122,6 +122,9 @@ and exit 1. GraphQL `errors` inside an HTTP 2xx response remain in the JSON outp
 and do not change the exit status. Scripts should inspect the response when they
 need GraphQL-level success detection.
 
+Requests have a 30-second deadline, including the response body. Override it with
+`ANILIST_REQUEST_TIMEOUT_SECONDS`, using a positive finite number of seconds.
+
 ## License
 
 Licensed under the GNU Affero General Public License v3.0 only. See [LICENSE](./LICENSE).

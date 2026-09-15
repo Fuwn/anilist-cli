@@ -8,8 +8,11 @@ import threading
 import unittest
 
 
+STALL_DURATION_SECONDS = 0.4
 SERVER_POLL_INTERVAL_SECONDS = 0.01
 PROCESS_TIMEOUT_SECONDS = 5
+DEFAULT_REQUEST_TIMEOUT_SECONDS = "30"
+SHORT_REQUEST_TIMEOUT_SECONDS = "0.1"
 EXECUTABLE = str(pathlib.Path(sys.argv.pop(1)).resolve())
 
 
@@ -18,6 +21,7 @@ class CliIntegrationTest(unittest.TestCase):
         self.requests = []
         self.response = {"data": {"ok": True}}
         self.status = 200
+        self.stall = None
         owner = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -33,11 +37,21 @@ class CliIntegrationTest(unittest.TestCase):
 
                 response = json.dumps(owner.response).encode()
 
+                if owner.stall == "headers":
+                    threading.Event().wait(STALL_DURATION_SECONDS)
+
                 self.send_response(owner.status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(response)))
                 self.end_headers()
-                self.wfile.write(response)
+
+                if owner.stall == "body":
+                    threading.Event().wait(STALL_DURATION_SECONDS)
+
+                try:
+                    self.wfile.write(response)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
 
             def log_message(self, *_arguments):
                 pass
@@ -56,10 +70,11 @@ class CliIntegrationTest(unittest.TestCase):
         self.server.server_close()
         self.thread.join()
 
-    def run_cli(self, *arguments):
+    def run_cli(self, *arguments, timeout_seconds=DEFAULT_REQUEST_TIMEOUT_SECONDS):
         environment = dict(
             os.environ,
             ANILIST_GRAPHQL_ENDPOINT=f"http://127.0.0.1:{self.server.server_port}",
+            ANILIST_REQUEST_TIMEOUT_SECONDS=timeout_seconds,
         )
 
         return subprocess.run(
@@ -308,6 +323,28 @@ class CliIntegrationTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), self.response)
+
+    def test_deadline_covers_headers_and_body(self):
+        for phase in ["headers", "body"]:
+            with self.subTest(phase=phase):
+                self.stall = phase
+                result = self.run_cli(
+                    "media",
+                    "--selection-set",
+                    "id",
+                    timeout_seconds=SHORT_REQUEST_TIMEOUT_SECONDS,
+                )
+
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("Request timed out", result.stderr)
+                self.assertEqual(result.stdout, "")
+
+    def test_invalid_deadline(self):
+        result = self.run_cli("media", "--selection-set", "id", timeout_seconds="nan")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("positive finite number", result.stderr)
+        self.assertEqual(self.requests, [])
 
 
 if __name__ == "__main__":
