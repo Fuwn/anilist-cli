@@ -7,90 +7,67 @@ let printAndExit channel exitCode message =
   flush channel;
   exit exitCode
 
-let printResponse statusCode responseBody =
+let exitCodeAfterPrintingResponse (statusCode, responseBody) =
   let printableResponse =
     GraphQlTransport.prettyPrintedJsonOrOriginal responseBody
   in
 
   if statusCode >= 200 && statusCode < 300 then (
     print_endline printableResponse;
-    Lwt.return 0)
+    0)
   else (
     prerr_endline printableResponse;
-    Lwt.return 1)
+    1)
 
-let executeQuery ~headers ~operationName ~variables ~query =
-  let endpoint = GraphQlTransport.endpointOfEnvironment () in
+let exitAfterRequest request =
+  exit
+    (Lwt_main.run
+       (Lwt.catch
+          (fun () ->
+            request (GraphQlTransport.endpointOfEnvironment ())
+            >|= exitCodeAfterPrintingResponse)
+          (fun exceptionValue ->
+            prerr_endline
+              (Printf.sprintf "Request failed: %s"
+                 (Printexc.to_string exceptionValue));
+            Lwt.return 1)))
 
-  GraphQlTransport.executeQuery ~operationName ~variables ~headers ~endpoint
-    ~query
-  >>= fun (statusCode, responseBody) -> printResponse statusCode responseBody
+let executeInvocation ~headers ~endpoint invocation =
+  let loweredRequest = LoweringEngine.lower invocation in
+  let query = GraphQlDocument.render loweredRequest.LoweringEngine.document in
+  let variables =
+    match loweredRequest.LoweringEngine.loweredVariableAssignments with
+    | [] -> None
+    | variableAssignments ->
+        Some
+          (`Assoc
+             (variableAssignments
+             |> List.map (fun (variableName, variableValue) ->
+                 (variableName, CliArgument.jsonLiteralOfValue variableValue))))
+  in
 
-let runProtected task =
-  Lwt.catch task (fun exceptionValue ->
-      prerr_endline
-        (Printf.sprintf "Request failed: %s"
-           (Printexc.to_string exceptionValue));
-      Lwt.return 1)
-
-let run ~headers invocation =
-  runProtected (fun () ->
-      let loweredRequest = LoweringEngine.lower invocation in
-      let query =
-        GraphQlDocument.render loweredRequest.LoweringEngine.document
-      in
-      let variables =
-        match loweredRequest.LoweringEngine.loweredVariableAssignments with
-        | [] -> None
-        | variableAssignments ->
-            Some
-              (`Assoc
-                 (variableAssignments
-                 |> List.map (fun (variableName, variableValue) ->
-                     (variableName, CliArgument.jsonLiteralOfValue variableValue))
-                 ))
-      in
-
-      executeQuery ~headers
-        ~operationName:loweredRequest.LoweringEngine.selectedOperationName
-        ~variables ~query)
+  GraphQlTransport.executeQuery
+    ~operationName:loweredRequest.LoweringEngine.selectedOperationName
+    ~variables ~headers ~endpoint ~query
 
 let () =
-  let arguments = List.tl (Array.to_list Sys.argv) in
-
-  match RequestOptions.extractionOfArguments arguments with
+  match
+    RequestOptions.extractionOfArguments (List.tl (Array.to_list Sys.argv))
+  with
   | Error message -> printAndExit stderr 1 message
-  | Ok requestOptions -> (
-      match
-        SchemaCommand.ofArguments
-          requestOptions.RequestOptions.remainingArguments
-      with
+  | Ok { RequestOptions.headerPairs = headers; remainingArguments } -> (
+      match SchemaCommand.ofArguments remainingArguments with
       | Ok (Some schemaCommand) ->
-          exit
-            (Lwt_main.run
-               (runProtected (fun () ->
-                    let endpoint = GraphQlTransport.endpointOfEnvironment () in
-
-                    SchemaCommand.execute
-                      ~headers:requestOptions.RequestOptions.headerPairs
-                      ~endpoint schemaCommand
-                    >>= fun (statusCode, responseBody) ->
-                    printResponse statusCode responseBody)))
+          exitAfterRequest (fun endpoint ->
+              SchemaCommand.execute ~headers ~endpoint schemaCommand)
       | Error message ->
-          if
-            SchemaCommand.helpRequestedOfArguments
-              requestOptions.RequestOptions.remainingArguments
-          then printAndExit stdout 0 message
+          if SchemaCommand.helpRequestedOfArguments remainingArguments then
+            printAndExit stdout 0 message
           else printAndExit stderr 1 message
       | Ok None -> (
-          match
-            CommandLineInvocation.ofArguments
-              requestOptions.RequestOptions.remainingArguments
-          with
+          match CommandLineInvocation.ofArguments remainingArguments with
           | Ok `Help -> printAndExit stdout 0 CommandLineInvocation.usageText
           | Ok (`Invocation invocation) ->
-              exit
-                (Lwt_main.run
-                   (run ~headers:requestOptions.RequestOptions.headerPairs
-                      invocation))
+              exitAfterRequest (fun endpoint ->
+                  executeInvocation ~headers ~endpoint invocation)
           | Error message -> printAndExit stderr 1 message))
