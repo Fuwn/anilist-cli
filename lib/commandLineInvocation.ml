@@ -264,29 +264,25 @@ let segmentsOfSelectionPath selectionPath =
       ]
   | None, None -> fieldSegmentsOfPath selectionPath
 
-let selectionPathsOfExpressions selectionExpressions =
-  selectionExpressions
-  |> List.concat_map (fun selectionExpression ->
-      let paths =
-        selectionExpression |> String.split_on_char ',' |> List.map String.trim
-        |> List.filter (fun path -> path <> "")
-      in
+let selectionPathsOfExpression selectionExpression =
+  let paths =
+    selectionExpression |> String.split_on_char ',' |> List.map String.trim
+    |> List.filter (fun path -> path <> "")
+  in
 
-      if paths = [] then invalid_arg "Selection set cannot be empty.";
+  if paths = [] then invalid_arg "Selection set cannot be empty.";
 
-      List.map
-        (fun path ->
-          if String.contains path '/' then
-            invalid_arg
-              "Selection paths cannot contain /; scope a path with --field \
-               instead.";
+  paths
+  |> List.map (fun path ->
+      if String.contains path '/' then
+        invalid_arg
+          "Selection paths cannot contain /; scope a path with --field instead.";
 
-          let segments = segmentsOfSelectionPath path in
+      let segments = segmentsOfSelectionPath path in
 
-          if segments = [] then invalid_arg "Selection path cannot be empty.";
+      if segments = [] then invalid_arg "Selection path cannot be empty.";
 
-          segments)
-        paths)
+      segments)
 
 let segmentsEndInFragmentSpread selectionPathSegments =
   match List.rev selectionPathSegments with
@@ -655,7 +651,7 @@ let handleSelectionPath resolveSelectionPathSegments parserState pathText =
     (resolveSelectionPathSegments parserState pathText)
 
 let handleSelectionSet parserState expressionText =
-  let selectionPaths = selectionPathsOfExpressions [ expressionText ] in
+  let selectionPaths = selectionPathsOfExpression expressionText in
 
   updateBranchOrFallback parserState
     ~onBranch:(fun branch ->
