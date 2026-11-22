@@ -132,6 +132,8 @@ let usageText =
        --directive include(if: $withCore)";
     ]
 
+let withUsageText message = message ^ "\n\n" ^ usageText
+let raiseUsageError message = invalid_arg (withUsageText message)
 let selectionSetOptionName = "selection-set"
 let compatibilitySelectionSetOptionName = "fields"
 let fieldOptionName = "field"
@@ -170,10 +172,8 @@ let splitAliasAndFieldName pathSegment =
   | [ fieldName ] -> (None, fieldName)
   | [ alias; fieldName ] -> (Some alias, fieldName)
   | _ ->
-      raise
-        (Invalid_argument
-           (Printf.sprintf "Invalid field path segment %s\n\n%s" pathSegment
-              usageText))
+      raiseUsageError
+        (Printf.sprintf "Invalid field path segment %s" pathSegment)
 
 let operationTypeOfToken = function
   | "query" -> Some Query
@@ -192,10 +192,7 @@ let optionPairOfToken token remainingTokens =
 
           ((optionName, optionValue), tail)
       | [] | _ :: _ ->
-          raise
-            (Invalid_argument
-               (Printf.sprintf "Missing value for option %s\n\n%s" token
-                  usageText)))
+          raiseUsageError (Printf.sprintf "Missing value for option %s" token))
 
 let valueOfOptionToken token remainingTokens =
   let (_, optionValue), tail = optionPairOfToken token remainingTokens in
@@ -214,28 +211,14 @@ let variableAssignmentOfText variableAssignmentText =
       in
 
       if variableName = "" then
-        raise
-          (Invalid_argument
-             (Printf.sprintf "Variable assignment requires a name.\n\n%s"
-                usageText))
+        raiseUsageError "Variable assignment requires a name."
       else if String.contains variableName '-' then
-        raise
-          (Invalid_argument
-             (Printf.sprintf
-                "Variable names must use GraphQL variable syntax.\n\n%s"
-                usageText))
+        raiseUsageError "Variable names must use GraphQL variable syntax."
       else if String.starts_with ~prefix:"var:" rawValue then
-        raise
-          (Invalid_argument
-             (Printf.sprintf
-                "Variable assignments cannot contain variable references.\n\n%s"
-                usageText))
+        raiseUsageError
+          "Variable assignments cannot contain variable references."
       else (variableName, CliArgument.valueOfRawValue rawValue)
-  | _ ->
-      raise
-        (Invalid_argument
-           (Printf.sprintf
-              "Variable assignments must use name=value syntax.\n\n%s" usageText))
+  | _ -> raiseUsageError "Variable assignments must use name=value syntax."
 
 let structuredFragmentNameAndTypeCondition fragmentText =
   match String.split_on_char ':' fragmentText with
@@ -244,16 +227,9 @@ let structuredFragmentNameAndTypeCondition fragmentText =
       let normalizedTypeCondition = String.trim typeCondition in
 
       if normalizedFragmentName = "" || normalizedTypeCondition = "" then
-        raise
-          (Invalid_argument
-             (Printf.sprintf
-                "Structured fragments require name:type syntax.\n\n%s" usageText))
+        raiseUsageError "Structured fragments require name:type syntax."
       else (normalizedFragmentName, normalizedTypeCondition)
-  | _ ->
-      raise
-        (Invalid_argument
-           (Printf.sprintf
-              "Structured fragments require name:type syntax.\n\n%s" usageText))
+  | _ -> raiseUsageError "Structured fragments require name:type syntax."
 
 let operationHeaderOfText operationText =
   match String.split_on_char ':' operationText with
@@ -261,31 +237,20 @@ let operationHeaderOfText operationText =
       match operationTypeOfToken (String.trim operationToken) with
       | Some operationType -> (operationType, None)
       | None ->
-          raise
-            (Invalid_argument
-               (Printf.sprintf "Unknown operation type %s\n\n%s" operationToken
-                  usageText)))
+          raiseUsageError
+            (Printf.sprintf "Unknown operation type %s" operationToken))
   | [ operationToken; operationName ] -> (
       match operationTypeOfToken (String.trim operationToken) with
       | Some operationType ->
           let normalizedOperationName = String.trim operationName in
 
           if normalizedOperationName = "" then
-            raise
-              (Invalid_argument
-                 (Printf.sprintf "Operation names cannot be empty.\n\n%s"
-                    usageText))
+            raiseUsageError "Operation names cannot be empty."
           else (operationType, Some normalizedOperationName)
       | None ->
-          raise
-            (Invalid_argument
-               (Printf.sprintf "Unknown operation type %s\n\n%s" operationToken
-                  usageText)))
-  | _ ->
-      raise
-        (Invalid_argument
-           (Printf.sprintf "Operations must use type or type:name syntax.\n\n%s"
-              usageText))
+          raiseUsageError
+            (Printf.sprintf "Unknown operation type %s" operationToken))
+  | _ -> raiseUsageError "Operations must use type or type:name syntax."
 
 let makeFieldSegment ?fieldAlias fieldName =
   { fieldName; fieldAlias; fieldArgumentPairs = []; fieldDirectiveTexts = [] }
@@ -296,10 +261,7 @@ let fieldPathSegmentOfText pathSegmentText =
   in
   let trimmedFieldName = String.trim fieldName in
 
-  if trimmedFieldName = "" then
-    raise
-      (Invalid_argument
-         (Printf.sprintf "Field path cannot be empty.\n\n%s" usageText))
+  if trimmedFieldName = "" then raiseUsageError "Field path cannot be empty."
   else
     let fieldAlias =
       match aliasValue with
@@ -405,10 +367,7 @@ let branchEndsInFragmentSpread branch =
   segmentsEndInFragmentSpread branch.selectionPathSegments
 
 let makeSelectionBranchFromSegments segments =
-  if segments = [] then
-    raise
-      (Invalid_argument
-         (Printf.sprintf "Selection path cannot be empty.\n\n%s" usageText))
+  if segments = [] then raiseUsageError "Selection path cannot be empty."
   else { selectionPathSegments = segments; selectionPaths = [] }
 
 let makeSelectionBranchFromFieldPath fieldPath =
@@ -422,25 +381,16 @@ let updateLastSegment branch mapSegment =
 
 let withAddedBranchSelectionPaths branch selectionPaths =
   if branchEndsInFragmentSpread branch then
-    raise
-      (Invalid_argument
-         (Printf.sprintf "Fragment spreads cannot define a selection set.\n\n%s"
-            usageText))
+    raiseUsageError "Fragment spreads cannot define a selection set."
   else { branch with selectionPaths = branch.selectionPaths @ selectionPaths }
 
 let withPushedFieldSelectionPathSegment branch fieldName =
   if branchEndsInFragmentSpread branch then
-    raise
-      (Invalid_argument
-         (Printf.sprintf
-            "Fragment spreads cannot contain child selections.\n\n%s" usageText))
+    raiseUsageError "Fragment spreads cannot contain child selections."
   else
     let newSegments = fieldSegmentsOfPath fieldName in
 
-    if newSegments = [] then
-      raise
-        (Invalid_argument
-           (Printf.sprintf "Selection path cannot be empty.\n\n%s" usageText))
+    if newSegments = [] then raiseUsageError "Selection path cannot be empty."
     else
       {
         branch with
@@ -457,13 +407,9 @@ let withAddedBranchFieldArgumentPair branch fieldArgumentPair =
               fieldSegment.fieldArgumentPairs @ [ fieldArgumentPair ];
           }
     | InlineFragmentSegment _ | FragmentSpreadSegment _ ->
-        raise
-          (Invalid_argument
-             (Printf.sprintf
-                "Field arguments require the current selection branch to end \
-                 in a field.\n\n\
-                 %s"
-                usageText)))
+        raiseUsageError
+          "Field arguments require the current selection branch to end in a \
+           field.")
 
 let withUpdatedBranchFieldAlias branch fieldAlias =
   updateLastSegment branch (function
@@ -471,13 +417,8 @@ let withUpdatedBranchFieldAlias branch fieldAlias =
         FieldSegment
           { fieldSegment with fieldAlias = Some (normalizedAlias fieldAlias) }
     | InlineFragmentSegment _ | FragmentSpreadSegment _ ->
-        raise
-          (Invalid_argument
-             (Printf.sprintf
-                "--alias requires the current selection branch to end in a \
-                 field.\n\n\
-                 %s"
-                usageText)))
+        raiseUsageError
+          "--alias requires the current selection branch to end in a field.")
 
 let withAddedBranchDirective branch directiveText =
   updateLastSegment branch (function
@@ -512,10 +453,7 @@ let currentDefaultSelectionPathPrefix parserState =
 
 let ensureSelectionPathCanAcceptChildren selectionPathSegments =
   if segmentsEndInFragmentSpread selectionPathSegments then
-    raise
-      (Invalid_argument
-         (Printf.sprintf
-            "Fragment spreads cannot contain child selections.\n\n%s" usageText))
+    raiseUsageError "Fragment spreads cannot contain child selections."
   else selectionPathSegments
 
 let classifiedBranchPath pathText =
@@ -533,9 +471,7 @@ let currentBranchSegmentsOrRaise parserState ~requiredMessage =
   match parserState.currentBranch with
   | Some branch ->
       ensureSelectionPathCanAcceptChildren branch.selectionPathSegments
-  | None ->
-      raise
-        (Invalid_argument (Printf.sprintf "%s\n\n%s" requiredMessage usageText))
+  | None -> raiseUsageError requiredMessage
 
 let parentSegmentsAndBareText parserState ~currentBranchRequiredMessage pathText
     =
@@ -559,10 +495,7 @@ let resolvedSelectionPathSegmentsOfFieldPath parserState fieldPath =
   let nonemptyFieldSegments path =
     let segments = fieldSegmentsOfPath path in
 
-    if segments = [] then
-      raise
-        (Invalid_argument
-           (Printf.sprintf "Selection path cannot be empty.\n\n%s" usageText))
+    if segments = [] then raiseUsageError "Selection path cannot be empty."
     else segments
   in
 
@@ -588,10 +521,7 @@ let resolvedSelectionPathSegmentsOfInlineFragment parserState
   let normalizedTypeCondition = String.trim typeConditionText in
 
   if normalizedTypeCondition = "" then
-    raise
-      (Invalid_argument
-         (Printf.sprintf "Inline fragments require a type condition.\n\n%s"
-            usageText))
+    raiseUsageError "Inline fragments require a type condition."
   else
     parentSelectionPathSegments
     @ [
@@ -610,19 +540,13 @@ let resolvedSelectionPathSegmentsOfFragmentSpread parserState fragmentSpreadText
   let normalizedFragmentSpreadName = String.trim fragmentSpreadName in
 
   if normalizedFragmentSpreadName = "" then
-    raise
-      (Invalid_argument
-         (Printf.sprintf "Fragment spreads require a fragment name.\n\n%s"
-            usageText))
+    raiseUsageError "Fragment spreads require a fragment name."
   else
     parentSelectionPathSegments
     @ [
         FragmentSpreadSegment
           (makeFragmentSpreadSegment normalizedFragmentSpreadName);
       ]
-
-let raiseMissing message =
-  raise (Invalid_argument (Printf.sprintf "%s\n\n%s" message usageText))
 
 let withMappedCurrentTarget parserState ~onFragment ~onOperation ~onNeither =
   match parserState.currentTarget with
@@ -688,7 +612,7 @@ let finalizedAllPending parserState =
 
 let withUpdatedCurrentSelectionBranch parserState branch =
   if parserState.currentTarget = None then
-    raiseMissing "Selections require an operation or fragment context."
+    raiseUsageError "Selections require an operation or fragment context."
   else { parserState with currentBranch = Some branch }
 
 let withAddedRootSelectionPaths parserState selectionPaths =
@@ -706,7 +630,7 @@ let withAddedRootSelectionPaths parserState selectionPaths =
           operationDefinition.rootSelectionPaths @ selectionPaths;
       })
     ~onNeither:(fun _ ->
-      raiseMissing "Selections require an operation or fragment context.")
+      raiseUsageError "Selections require an operation or fragment context.")
 
 let withAddedCurrentTargetDirective parserState directiveText =
   withMappedCurrentTarget parserState
@@ -723,7 +647,7 @@ let withAddedCurrentTargetDirective parserState directiveText =
           operationDefinition.operationDirectiveTexts @ [ directiveText ];
       })
     ~onNeither:(fun _ ->
-      raiseMissing "Directives require an operation or fragment context.")
+      raiseUsageError "Directives require an operation or fragment context.")
 
 let startedOperationDefinition parserState operationType operationName =
   let parserState = finalizedAllPending parserState in
@@ -826,20 +750,16 @@ let duplicateNames names =
 
 let validatedInvocation invocation =
   if invocation.operationDefinitions = [] then
-    Error (Printf.sprintf "Missing operation selection.\n\n%s" usageText)
+    Error (withUsageText "Missing operation selection.")
   else if
     not (operationDefinitionsHaveSelections invocation.operationDefinitions)
-  then
-    Error
-      (Printf.sprintf "Each operation requires a selection set.\n\n%s" usageText)
+  then Error (withUsageText "Each operation requires a selection set.")
   else if
     not
       (structuredFragmentsHaveSelections
          invocation.structuredFragmentDefinitions)
   then
-    Error
-      (Printf.sprintf "Each structured fragment requires a selection set.\n\n%s"
-         usageText)
+    Error (withUsageText "Each structured fragment requires a selection set.")
   else if
     not
       (List.for_all
@@ -862,7 +782,7 @@ let validatedInvocation invocation =
     let duplicateOperationNames = duplicateNames operationNames in
 
     if duplicateOperationNames <> [] then
-      Error (Printf.sprintf "Operation names must be unique.\n\n%s" usageText)
+      Error (withUsageText "Operation names must be unique.")
     else if
       List.length invocation.operationDefinitions > 1
       && List.exists
@@ -870,10 +790,8 @@ let validatedInvocation invocation =
            invocation.operationDefinitions
     then
       Error
-        (Printf.sprintf
-           "Multiple-operation documents require every operation to be named.\n\n\
-            %s"
-           usageText)
+        (withUsageText
+           "Multiple-operation documents require every operation to be named.")
     else
       match invocation.selectedOperationName with
       | Some selectedOperationName ->
@@ -885,17 +803,16 @@ let validatedInvocation invocation =
           then Ok invocation
           else
             Error
-              (Printf.sprintf
-                 "Selected operation %s does not exist in the document.\n\n%s"
-                 selectedOperationName usageText)
+              (withUsageText
+                 (Printf.sprintf
+                    "Selected operation %s does not exist in the document."
+                    selectedOperationName))
       | None ->
           if List.length invocation.operationDefinitions > 1 then
             Error
-              (Printf.sprintf
+              (withUsageText
                  "Multiple-operation documents require \
-                  --execute-operation-name.\n\n\
-                  %s"
-                 usageText)
+                  --execute-operation-name.")
           else Ok invocation
 
 exception HelpRequested
@@ -935,10 +852,8 @@ let withCurrentOperationOrRaise ~optionDescription parserState mapOperation =
           Some (OperationTarget (mapOperation operationDefinition));
       }
   | None | Some (FragmentTarget _) ->
-      raise
-        (Invalid_argument
-           (Printf.sprintf "%s requires a current operation.\n\n%s"
-              optionDescription usageText))
+      raiseUsageError
+        (Printf.sprintf "%s requires a current operation." optionDescription)
 
 let updateBranchOrFallback parserState ~onBranch ~onNoBranch =
   match currentSelectionBranchOfState parserState with
@@ -1012,10 +927,7 @@ let handleAlias parserState fieldAlias =
   updateBranchOrFallback parserState
     ~onBranch:(fun branch -> withUpdatedBranchFieldAlias branch fieldAlias)
     ~onNoBranch:(fun _ ->
-      raise
-        (Invalid_argument
-           (Printf.sprintf
-              "--alias requires an existing selection branch.\n\n%s" usageText)))
+      raiseUsageError "--alias requires an existing selection branch.")
 
 let handleFragmentDefinition parserState fragmentDefinitionText =
   let fragmentDefinitionText = String.trim fragmentDefinitionText in
@@ -1039,11 +951,10 @@ let handleFieldArgument parserState (name, rawValue) =
     ~onBranch:(fun branch ->
       withAddedBranchFieldArgumentPair branch fieldArgumentPair)
     ~onNoBranch:(fun _ ->
-      raise
-        (Invalid_argument
-           (Printf.sprintf
-              "Field argument %s requires an existing selection branch.\n\n%s"
-              (fst fieldArgumentPair) usageText)))
+      raiseUsageError
+        (Printf.sprintf
+           "Field argument %s requires an existing selection branch."
+           (fst fieldArgumentPair)))
 
 let optionHandlers =
   [
