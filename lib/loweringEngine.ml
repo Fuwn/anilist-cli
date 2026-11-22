@@ -1,70 +1,51 @@
 open CommandLineInvocation
 
-let graphQlArgumentsOfOptionPairs optionPairs =
-  optionPairs
-  |> List.map (fun (optionName, optionValue) ->
-      {
-        CliArgument.name = GraphQlName.lowerCamelCaseOfCliToken optionName;
-        value = optionValue;
-      })
-
-let graphQlFieldNameOfSegment ~isAtOperationRoot fieldName =
-  if isAtOperationRoot then GraphQlName.upperCamelCaseOfCliToken fieldName
-  else GraphQlName.lowerCamelCaseOfCliToken fieldName
-
-let rec lowerSelectionPathSegments ~isAtOperationRoot selectionPathSegments
-    selectionSet =
-  let lowerTail ~isAtOperationRoot = function
-    | [] -> selectionSet
-    | remainingSelectionPathSegments ->
+let rec lowerSelectionPath ~isAtOperationRoot selectionPath leafSelectionSet =
+  let lowerRemaining ~isAtOperationRoot = function
+    | [] -> leafSelectionSet
+    | remainingSelectionPath ->
         [
-          lowerSelectionPathSegments ~isAtOperationRoot
-            remainingSelectionPathSegments selectionSet;
+          lowerSelectionPath ~isAtOperationRoot remainingSelectionPath
+            leafSelectionSet;
         ]
   in
 
-  match selectionPathSegments with
-  | [] ->
-      raise (Invalid_argument "Expected at least one selection path segment")
-  | FieldSegment
-      { fieldName; fieldAlias; fieldArgumentPairs; fieldDirectiveTexts }
-    :: remainingSelectionPathSegments ->
+  match selectionPath with
+  | [] -> invalid_arg "Expected at least one selection path segment"
+  | GraphQlDocument.Field field :: remainingSelectionPath ->
       GraphQlDocument.Field
         {
-          alias = fieldAlias;
-          name = graphQlFieldNameOfSegment ~isAtOperationRoot fieldName;
-          arguments = graphQlArgumentsOfOptionPairs fieldArgumentPairs;
-          directives = fieldDirectiveTexts;
+          field with
+          name =
+            (if isAtOperationRoot then
+               GraphQlName.upperCamelCaseOfCliToken field.name
+             else GraphQlName.lowerCamelCaseOfCliToken field.name);
+          arguments =
+            field.arguments
+            |> List.map (fun (name, value) ->
+                (GraphQlName.lowerCamelCaseOfCliToken name, value));
           selectionSet =
-            lowerTail ~isAtOperationRoot:false remainingSelectionPathSegments;
+            lowerRemaining ~isAtOperationRoot:false remainingSelectionPath;
         }
-  | InlineFragmentSegment
-      { inlineFragmentTypeCondition; inlineFragmentDirectiveTexts }
-    :: remainingSelectionPathSegments ->
+  | GraphQlDocument.InlineFragment inlineFragment :: remainingSelectionPath ->
       GraphQlDocument.InlineFragment
         {
+          inlineFragment with
           typeCondition =
-            GraphQlName.upperCamelCaseOfCliToken inlineFragmentTypeCondition;
-          directives = inlineFragmentDirectiveTexts;
+            GraphQlName.upperCamelCaseOfCliToken inlineFragment.typeCondition;
           selectionSet =
-            lowerTail ~isAtOperationRoot remainingSelectionPathSegments;
+            lowerRemaining ~isAtOperationRoot remainingSelectionPath;
         }
-  | FragmentSpreadSegment { fragmentSpreadName; fragmentSpreadDirectiveTexts }
-    :: remainingSelectionPathSegments ->
-      if remainingSelectionPathSegments <> [] then
-        raise
-          (Invalid_argument "Fragment spreads cannot contain child selections")
-      else
-        GraphQlDocument.FragmentSpread
-          {
-            name = fragmentSpreadName;
-            directives = fragmentSpreadDirectiveTexts;
-          }
+  | (GraphQlDocument.FragmentSpread _ as fragmentSpread)
+    :: remainingSelectionPath ->
+      if remainingSelectionPath <> [] then
+        invalid_arg "Fragment spreads cannot contain child selections"
+      else fragmentSpread
 
 let lowerSelectionPaths ~isAtOperationRoot selectionPaths =
   selectionPaths
-  |> List.map (fun segments ->
-      lowerSelectionPathSegments ~isAtOperationRoot segments [])
+  |> List.map (fun selectionPath ->
+      lowerSelectionPath ~isAtOperationRoot selectionPath [])
 
 type request = {
   document : GraphQlDocument.t;
@@ -75,12 +56,12 @@ let lowerSelectionBranch selectionBranch =
   let selectionsRemainAtRoot =
     List.for_all
       (function
-        | InlineFragmentSegment _ -> true
-        | FieldSegment _ | FragmentSpreadSegment _ -> false)
+        | GraphQlDocument.InlineFragment _ -> true
+        | GraphQlDocument.Field _ | GraphQlDocument.FragmentSpread _ -> false)
       selectionBranch.selectionPathSegments
   in
 
-  lowerSelectionPathSegments ~isAtOperationRoot:true
+  lowerSelectionPath ~isAtOperationRoot:true
     selectionBranch.selectionPathSegments
     (lowerSelectionPaths ~isAtOperationRoot:selectionsRemainAtRoot
        selectionBranch.selectionPaths)

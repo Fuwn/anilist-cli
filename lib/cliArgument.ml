@@ -8,8 +8,6 @@ type value =
   | Variable of string
   | Json of Yojson.Safe.t
 
-type t = { name : string; value : value }
-
 let graphQlStringLiteral value = Yojson.Safe.to_string (`String value)
 
 let graphQlFloatLiteral value =

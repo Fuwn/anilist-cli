@@ -3,31 +3,11 @@ type operationType = GraphQlDocument.operationType =
   | Mutation
   | Subscription
 
-type fieldSegment = {
-  fieldName : string;
-  fieldAlias : string option;
-  fieldArgumentPairs : (string * CliArgument.value) list;
-  fieldDirectiveTexts : string list;
-}
-
-type inlineFragmentSegment = {
-  inlineFragmentTypeCondition : string;
-  inlineFragmentDirectiveTexts : string list;
-}
-
-type fragmentSpreadSegment = {
-  fragmentSpreadName : string;
-  fragmentSpreadDirectiveTexts : string list;
-}
-
-type selectionPathSegment =
-  | FieldSegment of fieldSegment
-  | InlineFragmentSegment of inlineFragmentSegment
-  | FragmentSpreadSegment of fragmentSpreadSegment
+type selectionPath = GraphQlDocument.selection list
 
 type selectionBranch = {
-  selectionPathSegments : selectionPathSegment list;
-  selectionPaths : selectionPathSegment list list;
+  selectionPathSegments : selectionPath;
+  selectionPaths : selectionPath list;
 }
 
 type operationDefinition = {
@@ -36,7 +16,7 @@ type operationDefinition = {
   variableDefinitions : string list;
   variableAssignments : (string * CliArgument.value) list;
   operationDirectiveTexts : string list;
-  rootSelectionPaths : selectionPathSegment list list;
+  rootSelectionPaths : selectionPath list;
   selectionBranches : selectionBranch list;
 }
 
@@ -49,7 +29,7 @@ type t = {
 type parserState = {
   finalizedOperationDefinitions : operationDefinition list;
   currentOperation : operationDefinition option;
-  currentDefaultSelectionPathPrefix : selectionPathSegment list;
+  currentDefaultSelectionPathPrefix : selectionPath;
   currentBranch : selectionBranch option;
   requestedOperationName : string option;
   finalizedFragmentDefinitionTexts : string list;
@@ -202,25 +182,26 @@ let fieldPathSegmentOfText pathSegmentText =
 
   if trimmedFieldName = "" then raiseUsageError "Field path cannot be empty."
   else
-    let fieldAlias =
+    let alias =
       match aliasValue with
       | Some alias when String.trim alias <> "" ->
           Some (GraphQlName.lowerCamelCaseOfCliToken (String.trim alias))
       | _ -> None
     in
 
-    {
-      fieldName = trimmedFieldName;
-      fieldAlias;
-      fieldArgumentPairs = [];
-      fieldDirectiveTexts = [];
-    }
+    GraphQlDocument.Field
+      {
+        alias;
+        name = trimmedFieldName;
+        arguments = [];
+        directives = [];
+        selectionSet = [];
+      }
 
 let fieldSegmentsOfPath fieldPath =
   fieldPath |> String.split_on_char '.' |> List.map String.trim
   |> List.filter (fun segmentText -> segmentText <> "")
-  |> List.map (fun segmentText ->
-      FieldSegment (fieldPathSegmentOfText segmentText))
+  |> List.map fieldPathSegmentOfText
 
 let nonemptyFieldSegmentsOfPath fieldPath =
   match fieldSegmentsOfPath fieldPath with
@@ -243,25 +224,22 @@ let segmentsOfSelectionPath selectionPath =
           if fields = [] then
             invalid_arg "Inline fragments require a selection set.";
 
-          InlineFragmentSegment
+          GraphQlDocument.InlineFragment
             {
-              inlineFragmentTypeCondition = String.trim typeCondition;
-              inlineFragmentDirectiveTexts = [];
+              typeCondition = String.trim typeCondition;
+              directives = [];
+              selectionSet = [];
             }
           :: fields
       | _ ->
           invalid_arg
             "Inline fragments require a type condition and selection set")
   | None, Some fragmentSpreadText ->
-      let fragmentSpreadName = String.trim fragmentSpreadText in
+      let name = String.trim fragmentSpreadText in
 
-      if fragmentSpreadName = "" then
-        invalid_arg "Fragment spreads require a name.";
+      if name = "" then invalid_arg "Fragment spreads require a name.";
 
-      [
-        FragmentSpreadSegment
-          { fragmentSpreadName; fragmentSpreadDirectiveTexts = [] };
-      ]
+      [ GraphQlDocument.FragmentSpread { name; directives = [] } ]
   | None, None -> fieldSegmentsOfPath selectionPath
 
 let selectionPathsOfExpression selectionExpression =
@@ -286,8 +264,9 @@ let selectionPathsOfExpression selectionExpression =
 
 let segmentsEndInFragmentSpread selectionPathSegments =
   match List.rev selectionPathSegments with
-  | FragmentSpreadSegment _ :: _ -> true
-  | (FieldSegment _ | InlineFragmentSegment _) :: _ | [] -> false
+  | GraphQlDocument.FragmentSpread _ :: _ -> true
+  | (GraphQlDocument.Field _ | GraphQlDocument.InlineFragment _) :: _ | [] ->
+      false
 
 let ensureSelectionPathCanAcceptChildren selectionPathSegments =
   if segmentsEndInFragmentSpread selectionPathSegments then
@@ -318,54 +297,42 @@ let withPushedFieldSelectionPathSegment branch fieldPath =
 
 let withAddedBranchFieldArgumentPair branch fieldArgumentPair =
   updateLastSegment branch (function
-    | FieldSegment fieldSegment ->
-        FieldSegment
-          {
-            fieldSegment with
-            fieldArgumentPairs =
-              fieldSegment.fieldArgumentPairs @ [ fieldArgumentPair ];
-          }
-    | InlineFragmentSegment _ | FragmentSpreadSegment _ ->
+    | GraphQlDocument.Field field ->
+        GraphQlDocument.Field
+          { field with arguments = field.arguments @ [ fieldArgumentPair ] }
+    | GraphQlDocument.InlineFragment _ | GraphQlDocument.FragmentSpread _ ->
         raiseUsageError
           "Field arguments require the current selection branch to end in a \
            field.")
 
 let withUpdatedBranchFieldAlias branch fieldAlias =
   updateLastSegment branch (function
-    | FieldSegment fieldSegment ->
-        FieldSegment
+    | GraphQlDocument.Field field ->
+        GraphQlDocument.Field
           {
-            fieldSegment with
-            fieldAlias = Some (GraphQlName.lowerCamelCaseOfCliToken fieldAlias);
+            field with
+            alias = Some (GraphQlName.lowerCamelCaseOfCliToken fieldAlias);
           }
-    | InlineFragmentSegment _ | FragmentSpreadSegment _ ->
+    | GraphQlDocument.InlineFragment _ | GraphQlDocument.FragmentSpread _ ->
         raiseUsageError
           "--alias requires the current selection branch to end in a field.")
 
 let withAddedBranchDirective branch directiveText =
   updateLastSegment branch (function
-    | FieldSegment fieldSegment ->
-        FieldSegment
+    | GraphQlDocument.Field field ->
+        GraphQlDocument.Field
+          { field with directives = field.directives @ [ directiveText ] }
+    | GraphQlDocument.InlineFragment inlineFragment ->
+        GraphQlDocument.InlineFragment
           {
-            fieldSegment with
-            fieldDirectiveTexts =
-              fieldSegment.fieldDirectiveTexts @ [ directiveText ];
+            inlineFragment with
+            directives = inlineFragment.directives @ [ directiveText ];
           }
-    | InlineFragmentSegment inlineFragmentSegment ->
-        InlineFragmentSegment
+    | GraphQlDocument.FragmentSpread fragmentSpread ->
+        GraphQlDocument.FragmentSpread
           {
-            inlineFragmentSegment with
-            inlineFragmentDirectiveTexts =
-              inlineFragmentSegment.inlineFragmentDirectiveTexts
-              @ [ directiveText ];
-          }
-    | FragmentSpreadSegment fragmentSpreadSegment ->
-        FragmentSpreadSegment
-          {
-            fragmentSpreadSegment with
-            fragmentSpreadDirectiveTexts =
-              fragmentSpreadSegment.fragmentSpreadDirectiveTexts
-              @ [ directiveText ];
+            fragmentSpread with
+            directives = fragmentSpread.directives @ [ directiveText ];
           })
 
 let classifiedBranchPath pathText =
@@ -419,18 +386,16 @@ let resolvedSelectionPathSegmentsOfInlineFragment =
     ~requiredMessage:
       "Relative --inline-fragment paths require an existing selection branch."
     ~emptyMessage:"Inline fragments require a type condition."
-    (fun inlineFragmentTypeCondition ->
-      InlineFragmentSegment
-        { inlineFragmentTypeCondition; inlineFragmentDirectiveTexts = [] })
+    (fun typeCondition ->
+      GraphQlDocument.InlineFragment
+        { typeCondition; directives = []; selectionSet = [] })
 
 let resolvedSelectionPathSegmentsOfFragmentSpread =
   resolvedSelectionPathSegmentsOfFragment
     ~requiredMessage:
       "Relative --fragment-spread paths require an existing selection branch."
-    ~emptyMessage:"Fragment spreads require a fragment name."
-    (fun fragmentSpreadName ->
-      FragmentSpreadSegment
-        { fragmentSpreadName; fragmentSpreadDirectiveTexts = [] })
+    ~emptyMessage:"Fragment spreads require a fragment name." (fun name ->
+      GraphQlDocument.FragmentSpread { name; directives = [] })
 
 let withMappedCurrentOperation parserState mapOperation =
   {
@@ -546,8 +511,8 @@ let operationHasSelections operation =
 
 let branchHasCompleteInlineFragment branch =
   match List.rev branch.selectionPathSegments with
-  | InlineFragmentSegment _ :: _ -> branch.selectionPaths <> []
-  | FieldSegment _ :: _ | FragmentSpreadSegment _ :: _ -> true
+  | GraphQlDocument.InlineFragment _ :: _ -> branch.selectionPaths <> []
+  | (GraphQlDocument.Field _ | GraphQlDocument.FragmentSpread _) :: _ -> true
   | [] -> false
 
 let rec hasDuplicateName = function

@@ -4,7 +4,7 @@ type selection =
   | Field of {
       alias : string option;
       name : string;
-      arguments : CliArgument.t list;
+      arguments : (string * CliArgument.value) list;
       directives : string list;
       selectionSet : selection list;
     }
@@ -41,7 +41,7 @@ let renderArguments = function
   | [] -> ""
   | arguments ->
       arguments
-      |> List.map (fun { CliArgument.name; value } ->
+      |> List.map (fun (name, value) ->
           Printf.sprintf "%s: %s" name (CliArgument.graphQlLiteralOfValue value))
       |> String.concat ", " |> Printf.sprintf "(%s)"
 
