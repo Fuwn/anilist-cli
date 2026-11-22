@@ -463,31 +463,31 @@ let finalizedAllPending parserState =
     currentDefaultSelectionPathPrefix = [];
   }
 
+let withCurrentOperationOrRaise parserState ~missingMessage mapOperation =
+  if parserState.currentOperation = None then raiseUsageError missingMessage
+  else withMappedCurrentOperation parserState mapOperation
+
 let withUpdatedCurrentSelectionBranch parserState branch =
   if parserState.currentOperation = None then
     raiseUsageError "Selections require an operation context."
   else { parserState with currentBranch = Some branch }
 
 let withAddedRootSelectionPaths parserState selectionPaths =
-  if parserState.currentOperation = None then
-    raiseUsageError "Selections require an operation context."
-  else
-    withMappedCurrentOperation parserState (fun operation ->
-        {
-          operation with
-          rootSelectionPaths = operation.rootSelectionPaths @ selectionPaths;
-        })
+  withCurrentOperationOrRaise parserState
+    ~missingMessage:"Selections require an operation context." (fun operation ->
+      {
+        operation with
+        rootSelectionPaths = operation.rootSelectionPaths @ selectionPaths;
+      })
 
 let withAddedOperationDirective parserState directiveText =
-  if parserState.currentOperation = None then
-    raiseUsageError "Directives require an operation context."
-  else
-    withMappedCurrentOperation parserState (fun operation ->
-        {
-          operation with
-          operationDirectiveTexts =
-            operation.operationDirectiveTexts @ [ directiveText ];
-        })
+  withCurrentOperationOrRaise parserState
+    ~missingMessage:"Directives require an operation context." (fun operation ->
+      {
+        operation with
+        operationDirectiveTexts =
+          operation.operationDirectiveTexts @ [ directiveText ];
+      })
 
 let startedOperationDefinition parserState operationType operationName =
   let parserState = finalizedAllPending parserState in
@@ -632,12 +632,6 @@ let replaceCurrentSelectionBranchWithSegments parserState resolvedSegments =
   withUpdatedCurrentSelectionBranch parserState
     { selectionPathSegments = resolvedSegments; selectionPaths = [] }
 
-let withCurrentOperationOrRaise ~optionDescription parserState mapOperation =
-  if parserState.currentOperation = None then
-    raiseUsageError
-      (Printf.sprintf "%s requires a current operation." optionDescription)
-  else withMappedCurrentOperation parserState mapOperation
-
 let updateBranchOrFallback parserState ~onBranch ~onNoBranch =
   match parserState.currentBranch with
   | Some branch ->
@@ -664,7 +658,8 @@ let handleSelectionSet parserState expressionText =
     ~onNoBranch:(fun state -> withAddedRootSelectionPaths state selectionPaths)
 
 let handleOperationName parserState operationName =
-  withCurrentOperationOrRaise ~optionDescription:"--operation-name" parserState
+  withCurrentOperationOrRaise parserState
+    ~missingMessage:"--operation-name requires a current operation."
     (fun operationDefinition ->
       { operationDefinition with operationName = Some operationName })
 
@@ -672,8 +667,9 @@ let handleSelectedOperationName parserState selectedOperationName =
   { parserState with requestedOperationName = Some selectedOperationName }
 
 let handleVariableDefinition parserState variableDefinition =
-  withCurrentOperationOrRaise ~optionDescription:"--variable-definition"
-    parserState (fun operationDefinition ->
+  withCurrentOperationOrRaise parserState
+    ~missingMessage:"--variable-definition requires a current operation."
+    (fun operationDefinition ->
       {
         operationDefinition with
         variableDefinitions =
@@ -681,7 +677,8 @@ let handleVariableDefinition parserState variableDefinition =
       })
 
 let handleVariable parserState variableAssignmentText =
-  withCurrentOperationOrRaise ~optionDescription:"--variable" parserState
+  withCurrentOperationOrRaise parserState
+    ~missingMessage:"--variable requires a current operation."
     (fun operationDefinition ->
       {
         operationDefinition with
