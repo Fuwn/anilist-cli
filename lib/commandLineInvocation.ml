@@ -558,6 +558,21 @@ let validatedInvocation invocation =
           "Multiple-operation documents require --execute-operation-name."
     | Some _ | None -> Ok invocation
 
+let selectedVariables invocation =
+  let isSelected operation =
+    invocation.selectedOperationName = None
+    || operation.operationName = invocation.selectedOperationName
+  in
+
+  match List.find_opt isSelected invocation.operationDefinitions with
+  | None | Some { variableAssignments = []; _ } -> None
+  | Some { variableAssignments; _ } ->
+      Some
+        (`Assoc
+           (variableAssignments
+           |> List.map (fun (name, value) ->
+               (name, CliArgument.jsonLiteralOfValue value))))
+
 exception HelpRequested
 
 let replaceCurrentSelectionBranchWithSegments parserState resolvedSegments =

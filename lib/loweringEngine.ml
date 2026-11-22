@@ -42,11 +42,6 @@ and lowerSelectionPaths ~isAtOperationRoot selectionPaths =
     (lowerSelectionPath ~isAtOperationRoot ~leafSelectionPaths:[])
     selectionPaths
 
-type request = {
-  document : GraphQlDocument.t;
-  selectedVariableAssignments : (string * CliArgument.value) list;
-}
-
 let lowerOperationDefinition
     {
       CommandLineInvocation.operationType;
@@ -72,31 +67,14 @@ let lowerOperationDefinition
           selectionBranches;
   }
 
-(* The lowerer assumes a validated invocation (see
-   CommandLineInvocation.validatedInvocation): operation names are unique, and
-   the selected operation name exists whenever the document requires one. *)
 let lower
     {
       CommandLineInvocation.operationDefinitions;
-      selectedOperationName;
+      selectedOperationName = _;
       fragmentDefinitionTexts;
     } =
-  let selectedOperationDefinition =
-    match selectedOperationName with
-    | None -> List.hd operationDefinitions
-    | Some _ ->
-        operationDefinitions
-        |> List.find (fun { CommandLineInvocation.operationName; _ } ->
-            operationName = selectedOperationName)
-  in
-
   {
-    document =
-      {
-        GraphQlDocument.operations =
-          List.map lowerOperationDefinition operationDefinitions;
-        fragmentDefinitions = fragmentDefinitionTexts;
-      };
-    selectedVariableAssignments =
-      selectedOperationDefinition.CommandLineInvocation.variableAssignments;
+    GraphQlDocument.operations =
+      List.map lowerOperationDefinition operationDefinitions;
+    fragmentDefinitions = fragmentDefinitionTexts;
   }

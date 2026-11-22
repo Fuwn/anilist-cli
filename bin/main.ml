@@ -31,18 +31,8 @@ let exitAfterRequest request =
             Lwt.return 1)))
 
 let executeInvocation ~headers invocation =
-  let loweredRequest = LoweringEngine.lower invocation in
-  let query = GraphQlDocument.render loweredRequest.LoweringEngine.document in
-  let variables =
-    match loweredRequest.LoweringEngine.selectedVariableAssignments with
-    | [] -> None
-    | variableAssignments ->
-        Some
-          (`Assoc
-             (variableAssignments
-             |> List.map (fun (variableName, variableValue) ->
-                 (variableName, CliArgument.jsonLiteralOfValue variableValue))))
-  in
+  let query = GraphQlDocument.render (LoweringEngine.lower invocation) in
+  let variables = CommandLineInvocation.selectedVariables invocation in
 
   GraphQlTransport.executeQuery
     ~operationName:invocation.CommandLineInvocation.selectedOperationName

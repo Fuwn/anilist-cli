@@ -260,19 +260,12 @@ let testInvocations () =
       match (expectation, outcome) with
       | Query expectedQuery, Ok invocation ->
           assertEqual commandLine expectedQuery
-            (GraphQlDocument.render
-               (LoweringEngine.lower invocation).LoweringEngine.document)
+            (GraphQlDocument.render (LoweringEngine.lower invocation))
       | Variables expectedVariablesJson, Ok invocation ->
-          let variablesJson =
-            `Assoc
-              ((LoweringEngine.lower invocation)
-                 .LoweringEngine.selectedVariableAssignments
-              |> List.map (fun (name, value) ->
-                  (name, CliArgument.jsonLiteralOfValue value)))
-            |> Yojson.Safe.to_string
-          in
-
-          assertEqual commandLine expectedVariablesJson variablesJson
+          assertEqual commandLine expectedVariablesJson
+            (CommandLineInvocation.selectedVariables invocation
+            |> Option.fold ~none:"" ~some:(fun variables ->
+                Yojson.Safe.to_string variables))
       | Failure expectedMessage, Error message ->
           assertContainsSubstring commandLine expectedMessage message
       | Failure _, Ok _ -> failwith (commandLine ^ "\n\nExpected an error.")
