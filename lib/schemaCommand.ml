@@ -51,10 +51,6 @@ let usageText =
       "  anilist schema --directive include";
     ]
 
-let helpRequestedOfArguments = function
-  | [ "schema"; "--help" ] | [ "schema"; "help" ] -> true
-  | _ -> false
-
 let missingValueError optionName =
   Error
     (Printf.sprintf "Schema --%s requires a value.\n\n%s" optionName usageText)
@@ -109,23 +105,23 @@ let commandOfParsedArguments = function
         (Printf.sprintf "Schema --type requires a non-empty type name.\n\n%s"
            usageText)
   | { typeName = Some name; directiveName = None } ->
-      Ok (Some (typeCommand name))
+      Ok (`Command (typeCommand name))
   | { typeName = None; directiveName = Some "" } ->
       Error
         (Printf.sprintf
            "Schema --directive requires a non-empty directive name.\n\n%s"
            usageText)
   | { typeName = None; directiveName = Some name } ->
-      Ok (Some (directiveCommand name))
+      Ok (`Command (directiveCommand name))
   | { typeName = None; directiveName = None } ->
       Error (Printf.sprintf "Invalid schema command.\n\n%s" usageText)
 
 let ofArguments = function
-  | [ "schema" ] -> Ok (Some fullSchemaCommand)
-  | "schema" :: [ "--help" ] | "schema" :: [ "help" ] -> Error usageText
+  | [ "schema" ] -> Ok (`Command fullSchemaCommand)
+  | [ "schema"; ("--help" | "help") ] -> Ok `Help
   | "schema" :: schemaArguments ->
       Result.bind (parseArguments schemaArguments) commandOfParsedArguments
-  | _ -> Ok None
+  | _ -> Ok `NotSchemaCommand
 
 let filterDirectiveResponse ~directiveName responseBody =
   let replaceField name value fields =

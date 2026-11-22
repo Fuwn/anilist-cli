@@ -669,7 +669,7 @@ let testMultipleOperationParsing () =
 
 let testSchemaCommandParsing () =
   match SchemaCommand.ofArguments [ "schema" ] with
-  | Ok (Some schemaCommand) ->
+  | Ok (`Command schemaCommand) ->
       assertEqual "IntrospectionQuery"
         (Option.get schemaCommand.SchemaCommand.operationName);
       assertEqual "0"
@@ -685,12 +685,12 @@ let testSchemaCommandParsing () =
       assertContainsSubstring "__schema" schemaCommand.SchemaCommand.queryText;
       assertContainsSubstring "fragment FullType"
         schemaCommand.SchemaCommand.queryText
-  | Ok None -> failwith "Expected schema command"
+  | Ok (`Help | `NotSchemaCommand) -> failwith "Expected schema command"
   | Error message -> failwith message
 
 let testSchemaTypeCommandParsing () =
   match SchemaCommand.ofArguments [ "schema"; "--type"; "Media" ] with
-  | Ok (Some schemaCommand) ->
+  | Ok (`Command schemaCommand) ->
       assertEqual "IntrospectionTypeQuery"
         (Option.get schemaCommand.SchemaCommand.operationName);
       assertContainsSubstring "__type(name: $name)"
@@ -703,12 +703,12 @@ let testSchemaTypeCommandParsing () =
       assertEqual "{\"name\":\"Media\"}"
         (schemaCommand.SchemaCommand.variables |> Option.get
        |> Yojson.Safe.to_string)
-  | Ok None -> failwith "Expected schema type command"
+  | Ok (`Help | `NotSchemaCommand) -> failwith "Expected schema type command"
   | Error message -> failwith message
 
 let testSchemaDirectiveCommandParsing () =
   match SchemaCommand.ofArguments [ "schema"; "--directive"; "include" ] with
-  | Ok (Some schemaCommand) ->
+  | Ok (`Command schemaCommand) ->
       assertEqual "IntrospectionDirectiveQuery"
         (Option.get schemaCommand.SchemaCommand.operationName);
       assertContainsSubstring "directives" schemaCommand.SchemaCommand.queryText;
@@ -719,21 +719,23 @@ let testSchemaDirectiveCommandParsing () =
            (match schemaCommand.SchemaCommand.variables with
            | Some _ -> 1
            | None -> 0))
-  | Ok None -> failwith "Expected schema directive command"
+  | Ok (`Help | `NotSchemaCommand) ->
+      failwith "Expected schema directive command"
   | Error message -> failwith message
 
 let testSchemaEqualsOptionParsing () =
   (match SchemaCommand.ofArguments [ "schema"; "--type=Media" ] with
-  | Ok (Some schemaCommand) ->
+  | Ok (`Command schemaCommand) ->
       assertEqual "IntrospectionTypeQuery"
         (Option.get schemaCommand.SchemaCommand.operationName)
-  | Ok None -> failwith "Expected schema type command"
+  | Ok (`Help | `NotSchemaCommand) -> failwith "Expected schema type command"
   | Error message -> failwith message);
   match SchemaCommand.ofArguments [ "schema"; "--directive=include" ] with
-  | Ok (Some schemaCommand) ->
+  | Ok (`Command schemaCommand) ->
       assertEqual "IntrospectionDirectiveQuery"
         (Option.get schemaCommand.SchemaCommand.operationName)
-  | Ok None -> failwith "Expected schema directive command"
+  | Ok (`Help | `NotSchemaCommand) ->
+      failwith "Expected schema directive command"
   | Error message -> failwith message
 
 let testSchemaCommandRejectsConflictingOptions () =
@@ -791,14 +793,15 @@ let testRequestHeaderExtractionRejectsMissingHeaderValue () =
       assertContainsSubstring "Missing value for option --header." message
 
 let testSchemaHelpDetection () =
-  if not (SchemaCommand.helpRequestedOfArguments [ "schema"; "--help" ]) then
+  if SchemaCommand.ofArguments [ "schema"; "--help" ] <> Ok `Help then
     failwith "Expected schema help detection";
 
-  if not (SchemaCommand.helpRequestedOfArguments [ "schema"; "help" ]) then
+  if SchemaCommand.ofArguments [ "schema"; "help" ] <> Ok `Help then
     failwith "Expected schema bare help detection";
 
-  if SchemaCommand.helpRequestedOfArguments [ "schema"; "nope"; "help" ] then
-    failwith "Unexpected schema malformed help detection"
+  match SchemaCommand.ofArguments [ "schema"; "nope"; "help" ] with
+  | Ok _ -> failwith "Unexpected schema malformed help detection"
+  | Error _ -> ()
 
 let () =
   testSingleFieldSelectionShorthand ();

@@ -57,14 +57,12 @@ let () =
   | Error message -> printAndExit stderr 1 message
   | Ok { RequestOptions.headerPairs = headers; remainingArguments } -> (
       match SchemaCommand.ofArguments remainingArguments with
-      | Ok (Some schemaCommand) ->
+      | Ok `Help -> printAndExit stdout 0 SchemaCommand.usageText
+      | Ok (`Command schemaCommand) ->
           exitAfterRequest (fun endpoint ->
               SchemaCommand.execute ~headers ~endpoint schemaCommand)
-      | Error message ->
-          if SchemaCommand.helpRequestedOfArguments remainingArguments then
-            printAndExit stdout 0 message
-          else printAndExit stderr 1 message
-      | Ok None -> (
+      | Error message -> printAndExit stderr 1 message
+      | Ok `NotSchemaCommand -> (
           match CommandLineInvocation.ofArguments remainingArguments with
           | Ok `Help -> printAndExit stdout 0 CommandLineInvocation.usageText
           | Ok (`Invocation invocation) ->
