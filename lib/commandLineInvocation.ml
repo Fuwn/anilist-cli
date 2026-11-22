@@ -627,16 +627,10 @@ let branchHasCompleteInlineFragment branch =
   | FieldSegment _ :: _ | FragmentSpreadSegment _ :: _ -> true
   | [] -> false
 
-let duplicateNames names =
-  let rec loop seenNames duplicates = function
-    | [] -> duplicates
-    | name :: remainingNames ->
-        if List.mem name seenNames then
-          loop seenNames (name :: duplicates) remainingNames
-        else loop (name :: seenNames) duplicates remainingNames
-  in
-
-  names |> loop [] [] |> List.rev |> List.sort_uniq String.compare
+let rec hasDuplicateName = function
+  | [] -> false
+  | name :: remainingNames ->
+      List.mem name remainingNames || hasDuplicateName remainingNames
 
 let validatedInvocation invocation =
   let operationBodies =
@@ -667,9 +661,8 @@ let validatedInvocation invocation =
       |> List.filter_map (fun operationDefinition ->
           operationDefinition.operationName)
     in
-    let duplicateOperationNames = duplicateNames operationNames in
 
-    if duplicateOperationNames <> [] then
+    if hasDuplicateName operationNames then
       Error (withUsageText "Operation names must be unique.")
     else if
       List.length invocation.operationDefinitions > 1
