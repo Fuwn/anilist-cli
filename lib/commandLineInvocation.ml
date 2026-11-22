@@ -150,8 +150,6 @@ let optionNameAndValueOfEqualsSyntax token =
       Some (optionName, optionValue)
   | None -> None
 
-let normalizedAlias alias = GraphQlName.lowerCamelCaseOfCliToken alias
-
 let splitAliasAndFieldName pathSegment =
   match String.split_on_char ':' pathSegment with
   | [ fieldName ] -> (None, fieldName)
@@ -201,39 +199,27 @@ let variableAssignmentOfText variableAssignmentText =
   | _ -> raiseUsageError "Variable assignments must use name=value syntax."
 
 let structuredFragmentNameAndTypeCondition fragmentText =
-  match String.split_on_char ':' fragmentText with
-  | [ fragmentName; typeCondition ] ->
-      let normalizedFragmentName = String.trim fragmentName in
-      let normalizedTypeCondition = String.trim typeCondition in
-
-      if normalizedFragmentName = "" || normalizedTypeCondition = "" then
-        raiseUsageError "Structured fragments require name:type syntax."
-      else (normalizedFragmentName, normalizedTypeCondition)
+  match String.split_on_char ':' fragmentText |> List.map String.trim with
+  | [ fragmentName; typeCondition ]
+    when fragmentName <> "" && typeCondition <> "" ->
+      (fragmentName, typeCondition)
   | _ -> raiseUsageError "Structured fragments require name:type syntax."
 
 let operationHeaderOfText operationText =
-  match String.split_on_char ':' operationText with
-  | [ operationToken ] -> (
-      match operationTypeOfToken (String.trim operationToken) with
-      | Some operationType -> (operationType, None)
-      | None ->
-          raiseUsageError
-            (Printf.sprintf "Unknown operation type %s" operationToken))
-  | [ operationToken; operationName ] -> (
-      match operationTypeOfToken (String.trim operationToken) with
-      | Some operationType ->
-          let normalizedOperationName = String.trim operationName in
+  let operationToken, operationName =
+    match String.split_on_char ':' operationText with
+    | [ operationToken ] -> (operationToken, None)
+    | [ operationToken; operationName ] ->
+        (operationToken, Some (String.trim operationName))
+    | _ -> raiseUsageError "Operations must use type or type:name syntax."
+  in
 
-          if normalizedOperationName = "" then
-            raiseUsageError "Operation names cannot be empty."
-          else (operationType, Some normalizedOperationName)
-      | None ->
-          raiseUsageError
-            (Printf.sprintf "Unknown operation type %s" operationToken))
-  | _ -> raiseUsageError "Operations must use type or type:name syntax."
-
-let makeFieldSegment ?fieldAlias fieldName =
-  { fieldName; fieldAlias; fieldArgumentPairs = []; fieldDirectiveTexts = [] }
+  match (operationTypeOfToken (String.trim operationToken), operationName) with
+  | None, _ ->
+      raiseUsageError
+        (Printf.sprintf "Unknown operation type %s" operationToken)
+  | Some _, Some "" -> raiseUsageError "Operation names cannot be empty."
+  | Some operationType, operationName -> (operationType, operationName)
 
 let fieldPathSegmentOfText pathSegmentText =
   let aliasValue, fieldName =
@@ -246,17 +232,27 @@ let fieldPathSegmentOfText pathSegmentText =
     let fieldAlias =
       match aliasValue with
       | Some alias when String.trim alias <> "" ->
-          Some (normalizedAlias (String.trim alias))
+          Some (GraphQlName.lowerCamelCaseOfCliToken (String.trim alias))
       | _ -> None
     in
 
-    makeFieldSegment ?fieldAlias trimmedFieldName
+    {
+      fieldName = trimmedFieldName;
+      fieldAlias;
+      fieldArgumentPairs = [];
+      fieldDirectiveTexts = [];
+    }
 
 let fieldSegmentsOfPath fieldPath =
   fieldPath |> String.split_on_char '.' |> List.map String.trim
   |> List.filter (fun segmentText -> segmentText <> "")
   |> List.map (fun segmentText ->
       FieldSegment (fieldPathSegmentOfText segmentText))
+
+let nonemptyFieldSegmentsOfPath fieldPath =
+  match fieldSegmentsOfPath fieldPath with
+  | [] -> raiseUsageError "Selection path cannot be empty."
+  | segments -> segments
 
 let scopeAndFieldPathOfCliField fieldPath =
   match
@@ -323,26 +319,15 @@ let selectionPathsOfExpressions fieldExpressions =
           (scope, segments))
         paths)
 
-let makeInlineFragmentSegment inlineFragmentTypeCondition =
-  { inlineFragmentTypeCondition; inlineFragmentDirectiveTexts = [] }
-
-let makeFragmentSpreadSegment fragmentSpreadName =
-  { fragmentSpreadName; fragmentSpreadDirectiveTexts = [] }
-
 let segmentsEndInFragmentSpread selectionPathSegments =
   match List.rev selectionPathSegments with
   | FragmentSpreadSegment _ :: _ -> true
   | (FieldSegment _ | InlineFragmentSegment _) :: _ | [] -> false
 
-let branchEndsInFragmentSpread branch =
-  segmentsEndInFragmentSpread branch.selectionPathSegments
-
-let makeSelectionBranchFromSegments segments =
-  if segments = [] then raiseUsageError "Selection path cannot be empty."
-  else { selectionPathSegments = segments; selectionPaths = [] }
-
-let makeSelectionBranchFromFieldPath fieldPath =
-  fieldPath |> fieldSegmentsOfPath |> makeSelectionBranchFromSegments
+let ensureSelectionPathCanAcceptChildren selectionPathSegments =
+  if segmentsEndInFragmentSpread selectionPathSegments then
+    raiseUsageError "Fragment spreads cannot contain child selections."
+  else selectionPathSegments
 
 let updateLastSegment branch mapSegment =
   match List.rev branch.selectionPathSegments with
@@ -351,22 +336,20 @@ let updateLastSegment branch mapSegment =
       { branch with selectionPathSegments = List.rev (mapSegment last :: rest) }
 
 let withAddedBranchSelectionPaths branch selectionPaths =
-  if branchEndsInFragmentSpread branch then
+  if segmentsEndInFragmentSpread branch.selectionPathSegments then
     raiseUsageError "Fragment spreads cannot define a selection set."
   else { branch with selectionPaths = branch.selectionPaths @ selectionPaths }
 
-let withPushedFieldSelectionPathSegment branch fieldName =
-  if branchEndsInFragmentSpread branch then
-    raiseUsageError "Fragment spreads cannot contain child selections."
-  else
-    let newSegments = fieldSegmentsOfPath fieldName in
+let withPushedFieldSelectionPathSegment branch fieldPath =
+  let parentSegments =
+    ensureSelectionPathCanAcceptChildren branch.selectionPathSegments
+  in
 
-    if newSegments = [] then raiseUsageError "Selection path cannot be empty."
-    else
-      {
-        branch with
-        selectionPathSegments = branch.selectionPathSegments @ newSegments;
-      }
+  {
+    branch with
+    selectionPathSegments =
+      parentSegments @ nonemptyFieldSegmentsOfPath fieldPath;
+  }
 
 let withAddedBranchFieldArgumentPair branch fieldArgumentPair =
   updateLastSegment branch (function
@@ -386,7 +369,10 @@ let withUpdatedBranchFieldAlias branch fieldAlias =
   updateLastSegment branch (function
     | FieldSegment fieldSegment ->
         FieldSegment
-          { fieldSegment with fieldAlias = Some (normalizedAlias fieldAlias) }
+          {
+            fieldSegment with
+            fieldAlias = Some (GraphQlName.lowerCamelCaseOfCliToken fieldAlias);
+          }
     | InlineFragmentSegment _ | FragmentSpreadSegment _ ->
         raiseUsageError
           "--alias requires the current selection branch to end in a field.")
@@ -417,16 +403,6 @@ let withAddedBranchDirective branch directiveText =
               @ [ directiveText ];
           })
 
-let currentSelectionBranchOfState parserState = parserState.currentBranch
-
-let currentDefaultSelectionPathPrefix parserState =
-  parserState.currentDefaultSelectionPathPrefix
-
-let ensureSelectionPathCanAcceptChildren selectionPathSegments =
-  if segmentsEndInFragmentSpread selectionPathSegments then
-    raiseUsageError "Fragment spreads cannot contain child selections."
-  else selectionPathSegments
-
 let classifiedBranchPath pathText =
   match
     ( StringPrefix.valueWithoutPrefix ~prefix:"./" pathText,
@@ -442,80 +418,54 @@ let currentBranchSegmentsOrRaise parserState ~requiredMessage =
       ensureSelectionPathCanAcceptChildren branch.selectionPathSegments
   | None -> raiseUsageError requiredMessage
 
-let parentSegmentsAndBareText parserState ~currentBranchRequiredMessage pathText
-    =
-  match classifiedBranchPath pathText with
-  | `Relative, bareText ->
-      ( currentBranchSegmentsOrRaise parserState
-          ~requiredMessage:currentBranchRequiredMessage,
-        bareText )
-  | `Absolute, bareText -> ([], bareText)
-  | `Default, bareText ->
-      let parentSegments =
-        match parserState.currentBranch with
-        | Some branch ->
-            ensureSelectionPathCanAcceptChildren branch.selectionPathSegments
-        | None -> parserState.currentDefaultSelectionPathPrefix
-      in
-
-      (parentSegments, bareText)
-
 let resolvedSelectionPathSegmentsOfFieldPath parserState fieldPath =
-  let nonemptyFieldSegments path =
-    let segments = fieldSegmentsOfPath path in
-
-    if segments = [] then raiseUsageError "Selection path cannot be empty."
-    else segments
-  in
-
   match classifiedBranchPath fieldPath with
   | `Relative, bareFieldPath ->
       currentBranchSegmentsOrRaise parserState
         ~requiredMessage:
           "Relative --field paths require an existing selection branch."
-      @ nonemptyFieldSegments bareFieldPath
-  | `Absolute, bareFieldPath -> nonemptyFieldSegments bareFieldPath
+      @ nonemptyFieldSegmentsOfPath bareFieldPath
+  | `Absolute, bareFieldPath -> nonemptyFieldSegmentsOfPath bareFieldPath
   | `Default, bareFieldPath ->
       parserState.currentDefaultSelectionPathPrefix
-      @ nonemptyFieldSegments bareFieldPath
+      @ nonemptyFieldSegmentsOfPath bareFieldPath
 
-let resolvedSelectionPathSegmentsOfInlineFragment parserState
-    inlineFragmentTypeConditionText =
-  let parentSelectionPathSegments, typeConditionText =
-    parentSegmentsAndBareText parserState
-      ~currentBranchRequiredMessage:
-        "Relative --inline-fragment paths require an existing selection branch."
-      inlineFragmentTypeConditionText
+let resolvedSelectionPathSegmentsOfFragment ~requiredMessage ~emptyMessage
+    segmentOfName parserState fragmentText =
+  let parentSegments, bareText =
+    match classifiedBranchPath fragmentText with
+    | `Relative, bareText ->
+        (currentBranchSegmentsOrRaise parserState ~requiredMessage, bareText)
+    | `Absolute, bareText -> ([], bareText)
+    | `Default, bareText -> (
+        match parserState.currentBranch with
+        | Some branch ->
+            ( ensureSelectionPathCanAcceptChildren branch.selectionPathSegments,
+              bareText )
+        | None -> (parserState.currentDefaultSelectionPathPrefix, bareText))
   in
-  let normalizedTypeCondition = String.trim typeConditionText in
+  let name = String.trim bareText in
 
-  if normalizedTypeCondition = "" then
-    raiseUsageError "Inline fragments require a type condition."
-  else
-    parentSelectionPathSegments
-    @ [
-        InlineFragmentSegment
-          (makeInlineFragmentSegment normalizedTypeCondition);
-      ]
+  if name = "" then raiseUsageError emptyMessage
+  else parentSegments @ [ segmentOfName name ]
 
-let resolvedSelectionPathSegmentsOfFragmentSpread parserState fragmentSpreadText
-    =
-  let parentSelectionPathSegments, fragmentSpreadName =
-    parentSegmentsAndBareText parserState
-      ~currentBranchRequiredMessage:
-        "Relative --fragment-spread paths require an existing selection branch."
-      fragmentSpreadText
-  in
-  let normalizedFragmentSpreadName = String.trim fragmentSpreadName in
+let resolvedSelectionPathSegmentsOfInlineFragment =
+  resolvedSelectionPathSegmentsOfFragment
+    ~requiredMessage:
+      "Relative --inline-fragment paths require an existing selection branch."
+    ~emptyMessage:"Inline fragments require a type condition."
+    (fun inlineFragmentTypeCondition ->
+      InlineFragmentSegment
+        { inlineFragmentTypeCondition; inlineFragmentDirectiveTexts = [] })
 
-  if normalizedFragmentSpreadName = "" then
-    raiseUsageError "Fragment spreads require a fragment name."
-  else
-    parentSelectionPathSegments
-    @ [
-        FragmentSpreadSegment
-          (makeFragmentSpreadSegment normalizedFragmentSpreadName);
-      ]
+let resolvedSelectionPathSegmentsOfFragmentSpread =
+  resolvedSelectionPathSegmentsOfFragment
+    ~requiredMessage:
+      "Relative --fragment-spread paths require an existing selection branch."
+    ~emptyMessage:"Fragment spreads require a fragment name."
+    (fun fragmentSpreadName ->
+      FragmentSpreadSegment
+        { fragmentSpreadName; fragmentSpreadDirectiveTexts = [] })
 
 let emptyDefinitionBody =
   { directiveTexts = []; rootSelectionPaths = []; selectionBranches = [] }
@@ -616,7 +566,12 @@ let startedOperationDefinition parserState operationType operationName =
   }
 
 let startedShorthandQueryOperation parserState firstFieldToken =
-  let branch = makeSelectionBranchFromFieldPath firstFieldToken in
+  let branch =
+    {
+      selectionPathSegments = nonemptyFieldSegmentsOfPath firstFieldToken;
+      selectionPaths = [];
+    }
+  in
 
   {
     (startedOperationDefinition parserState Query None) with
@@ -769,7 +724,7 @@ let replaceCurrentSelectionBranchWithSegments parserState resolvedSegments =
   in
 
   withUpdatedCurrentSelectionBranch parserState
-    (makeSelectionBranchFromSegments resolvedSegments)
+    { selectionPathSegments = resolvedSegments; selectionPaths = [] }
 
 let withCurrentOperationOrRaise ~optionDescription parserState mapOperation =
   match parserState.currentTarget with
@@ -784,7 +739,7 @@ let withCurrentOperationOrRaise ~optionDescription parserState mapOperation =
         (Printf.sprintf "%s requires a current operation." optionDescription)
 
 let updateBranchOrFallback parserState ~onBranch ~onNoBranch =
-  match currentSelectionBranchOfState parserState with
+  match parserState.currentBranch with
   | Some branch ->
       withUpdatedCurrentSelectionBranch parserState (onBranch branch)
   | None -> onNoBranch parserState
@@ -906,9 +861,9 @@ let optionHandlers =
   ]
 
 let handlePositionalToken parserState token =
-  match currentSelectionBranchOfState parserState with
+  match parserState.currentBranch with
   | Some branch
-    when currentDefaultSelectionPathPrefix parserState = []
+    when parserState.currentDefaultSelectionPathPrefix = []
          && branch.selectionPaths <> [] ->
       let finalizedParserState = finalizedCurrentBranch parserState in
 
