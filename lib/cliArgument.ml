@@ -104,5 +104,3 @@ let valueOfRawValue rawValue =
                     try Json (Yojson.Safe.from_string rawValue)
                     with Yojson.Json_error _ -> String rawValue
                   else String rawValue)))
-
-let make ~name ~rawValue = { name; value = valueOfRawValue rawValue }

@@ -12,9 +12,6 @@ let graphQlFieldNameOfSegment ~isTargetRoot fieldName =
   if isTargetRoot then GraphQlName.upperCamelCaseOfCliToken fieldName
   else GraphQlName.lowerCamelCaseOfCliToken fieldName
 
-let graphQlTypeCondition typeCondition =
-  GraphQlName.upperCamelCaseOfCliToken typeCondition
-
 let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
     selectionSet =
   let lowerTail ~isTargetRoot = function
@@ -46,7 +43,8 @@ let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
     :: remainingSelectionPathSegments ->
       GraphQlDocument.InlineFragment
         {
-          typeCondition = graphQlTypeCondition inlineFragmentTypeCondition;
+          typeCondition =
+            GraphQlName.upperCamelCaseOfCliToken inlineFragmentTypeCondition;
           directives = inlineFragmentDirectiveTexts;
           selectionSet = lowerTail ~isTargetRoot remainingSelectionPathSegments;
         }
@@ -62,17 +60,10 @@ let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
             directives = fragmentSpreadDirectiveTexts;
           }
 
-let lowerScopedPaths ~relativeAtRoot ~rootAtRoot scopedPaths =
-  let lowerPathsOfScope scope ~isTargetRoot =
-    scopedPaths
-    |> List.filter_map (fun (pathScope, segments) ->
-        if pathScope = scope then
-          Some (lowerSelectionPathSegments ~isTargetRoot segments [])
-        else None)
-  in
-
-  ( lowerPathsOfScope `Relative ~isTargetRoot:relativeAtRoot,
-    lowerPathsOfScope `Root ~isTargetRoot:rootAtRoot )
+let lowerSelectionPaths ~isTargetRoot selectionPaths =
+  selectionPaths
+  |> List.map (fun segments ->
+      lowerSelectionPathSegments ~isTargetRoot segments [])
 
 type request = {
   document : GraphQlDocument.t;
@@ -88,14 +79,11 @@ let lowerSelectionBranch selectionBranch =
         | FieldSegment _ | FragmentSpreadSegment _ -> false)
       selectionBranch.selectionPathSegments
   in
-  let relativeSelectionSet, rootSelectionSet =
-    lowerScopedPaths ~relativeAtRoot:selectionsRemainAtRoot ~rootAtRoot:true
-      selectionBranch.selectionPaths
-  in
 
-  ( lowerSelectionPathSegments ~isTargetRoot:true
-      selectionBranch.selectionPathSegments relativeSelectionSet,
-    rootSelectionSet )
+  lowerSelectionPathSegments ~isTargetRoot:true
+    selectionBranch.selectionPathSegments
+    (lowerSelectionPaths ~isTargetRoot:selectionsRemainAtRoot
+       selectionBranch.selectionPaths)
 
 let lowerOperationDefinition
     {
@@ -107,10 +95,6 @@ let lowerOperationDefinition
       rootSelectionPaths;
       selectionBranches;
     } =
-  let relativeSelectionSet, rootSelectionSet =
-    lowerScopedPaths ~relativeAtRoot:true ~rootAtRoot:true rootSelectionPaths
-  in
-  let loweredBranches = List.map lowerSelectionBranch selectionBranches in
   let operation =
     {
       GraphQlDocument.operationType;
@@ -118,9 +102,8 @@ let lowerOperationDefinition
       variableDefinitions;
       directives = operationDirectiveTexts;
       selectionSet =
-        relativeSelectionSet @ rootSelectionSet
-        @ List.map fst loweredBranches
-        @ List.concat_map snd loweredBranches;
+        lowerSelectionPaths ~isTargetRoot:true rootSelectionPaths
+        @ List.map lowerSelectionBranch selectionBranches;
     }
   in
 
@@ -150,16 +133,12 @@ let lower (invocation : CommandLineInvocation.t) =
     selectedOperationAndVariables loweredOperations
       invocation.CommandLineInvocation.selectedOperationName
   in
-  let fragmentDefinitions =
-    invocation.rawFragmentDefinitionTexts
-    |> List.map GraphQlDocument.fragmentDefinitionOfText
-  in
 
   {
     document =
       {
         GraphQlDocument.operations = loweredOperations |> List.map fst;
-        fragmentDefinitions;
+        fragmentDefinitions = invocation.rawFragmentDefinitionTexts;
       };
     selectedOperationName;
     loweredVariableAssignments;

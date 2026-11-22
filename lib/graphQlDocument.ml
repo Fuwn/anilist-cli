@@ -25,13 +25,6 @@ type operation = {
 
 type t = { operations : operation list; fragmentDefinitions : string list }
 
-let fragmentDefinitionOfText text =
-  let trimmedText = String.trim text in
-
-  if trimmedText = "" then
-    invalid_arg "Fragment definition text cannot be empty"
-  else trimmedText
-
 let renderDirectiveText text =
   let trimmed = String.trim text in
 

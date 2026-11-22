@@ -229,8 +229,8 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(self.requests[0][0]["variables"], {"name": "--value"})
         self.assertIn('name: "--value"', self.requests[0][0]["query"])
 
-    def test_empty_scopes_and_fragments(self):
-        for expression in [", ,", "root:", "/", "...on:Media."]:
+    def test_empty_expressions_and_fragments(self):
+        for expression in [", ,", "...on:Media."]:
             with self.subTest(expression=expression):
                 result = self.run_cli("query", "--selection-set", expression)
 

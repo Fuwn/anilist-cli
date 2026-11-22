@@ -25,11 +25,9 @@ type selectionPathSegment =
   | InlineFragmentSegment of inlineFragmentSegment
   | FragmentSpreadSegment of fragmentSpreadSegment
 
-type scopedSelectionPath = [ `Relative | `Root ] * selectionPathSegment list
-
 type selectionBranch = {
   selectionPathSegments : selectionPathSegment list;
-  selectionPaths : scopedSelectionPath list;
+  selectionPaths : selectionPathSegment list list;
 }
 
 type operationDefinition = {
@@ -38,7 +36,7 @@ type operationDefinition = {
   variableDefinitions : string list;
   variableAssignments : (string * CliArgument.value) list;
   operationDirectiveTexts : string list;
-  rootSelectionPaths : scopedSelectionPath list;
+  rootSelectionPaths : selectionPathSegment list list;
   selectionBranches : selectionBranch list;
 }
 
@@ -229,18 +227,10 @@ let nonemptyFieldSegmentsOfPath fieldPath =
   | [] -> raiseUsageError "Selection path cannot be empty."
   | segments -> segments
 
-let scopeAndFieldPathOfCliField fieldPath =
+let segmentsOfSelectionPath selectionPath =
   match
-    ( StringPrefix.valueWithoutPrefix ~prefix:"root:" fieldPath,
-      StringPrefix.valueWithoutPrefix ~prefix:"/" fieldPath )
-  with
-  | Some rootFieldPath, _ | None, Some rootFieldPath -> (`Root, rootFieldPath)
-  | None, None -> (`Relative, fieldPath)
-
-let segmentsOfScopedPath scopedPath =
-  match
-    ( StringPrefix.valueWithoutPrefix ~prefix:"...on:" scopedPath,
-      StringPrefix.valueWithoutPrefix ~prefix:"..." scopedPath )
+    ( StringPrefix.valueWithoutPrefix ~prefix:"...on:" selectionPath,
+      StringPrefix.valueWithoutPrefix ~prefix:"..." selectionPath )
   with
   | Some inlineFragmentPath, _ -> (
       match String.split_on_char '.' inlineFragmentPath with
@@ -272,7 +262,7 @@ let segmentsOfScopedPath scopedPath =
         FragmentSpreadSegment
           { fragmentSpreadName; fragmentSpreadDirectiveTexts = [] };
       ]
-  | None, None -> fieldSegmentsOfPath scopedPath
+  | None, None -> fieldSegmentsOfPath selectionPath
 
 let selectionPathsOfExpressions fieldExpressions =
   fieldExpressions
@@ -286,12 +276,11 @@ let selectionPathsOfExpressions fieldExpressions =
 
       List.map
         (fun path ->
-          let scope, path = scopeAndFieldPathOfCliField path in
-          let segments = segmentsOfScopedPath path in
+          let segments = segmentsOfSelectionPath path in
 
           if segments = [] then invalid_arg "Selection path cannot be empty.";
 
-          (scope, segments))
+          segments)
         paths)
 
 let segmentsEndInFragmentSpread selectionPathSegments =
@@ -516,7 +505,6 @@ let startedOperationDefinition parserState operationType operationName =
           rootSelectionPaths = [];
           selectionBranches = [];
         };
-    currentDefaultSelectionPathPrefix = [];
   }
 
 let startedShorthandQueryOperation parserState firstFieldToken =
@@ -557,8 +545,7 @@ let operationHasSelections operation =
 
 let branchHasCompleteInlineFragment branch =
   match List.rev branch.selectionPathSegments with
-  | InlineFragmentSegment _ :: _ ->
-      List.exists (fun (scope, _) -> scope = `Relative) branch.selectionPaths
+  | InlineFragmentSegment _ :: _ -> branch.selectionPaths <> []
   | FieldSegment _ :: _ | FragmentSpreadSegment _ :: _ -> true
   | [] -> false
 
@@ -740,8 +727,7 @@ let handleFieldArgument parserState (name, rawValue) =
     ~onNoBranch:(fun _ ->
       raiseUsageError
         (Printf.sprintf
-           "Field argument %s requires an existing selection branch."
-           (fst fieldArgumentPair)))
+           "Field argument %s requires an existing selection branch." name))
 
 let optionHandlers =
   [
@@ -808,7 +794,7 @@ let rec parseRemainingArguments parserState = function
 let ofArguments arguments =
   match arguments with
   | [] -> Error usageText
-  | "help" :: _ | "--help" :: _ -> Ok `Help
+  | "help" :: _ -> Ok `Help
   | _ -> (
       try
         let invocation = parseRemainingArguments initialParserState arguments in
