@@ -10,7 +10,7 @@ type t = {
 let fullSchemaCommand =
   {
     operationName = Some "IntrospectionQuery";
-    queryText = String.trim SchemaQueries.fullSchemaQueryText;
+    queryText = SchemaQueries.fullSchemaQueryText;
     variables = None;
     requestedDirectiveName = None;
   }
@@ -18,7 +18,7 @@ let fullSchemaCommand =
 let typeCommand typeName =
   {
     operationName = Some "IntrospectionTypeQuery";
-    queryText = String.trim SchemaQueries.typeQueryText;
+    queryText = SchemaQueries.typeQueryText;
     variables = Some (`Assoc [ ("name", `String typeName) ]);
     requestedDirectiveName = None;
   }
@@ -26,7 +26,7 @@ let typeCommand typeName =
 let directiveCommand directiveName =
   {
     operationName = Some "IntrospectionDirectiveQuery";
-    queryText = String.trim SchemaQueries.directiveQueryText;
+    queryText = SchemaQueries.directiveQueryText;
     variables = None;
     requestedDirectiveName = Some directiveName;
   }
