@@ -59,14 +59,6 @@ let selectionBranch selectionPathSegments selectionPaths =
       CommandLineInvocation.selectionPathsOfExpressions selectionPaths;
   }
 
-let definitionBody directiveTexts rootSelectionPaths selectionBranches =
-  {
-    CommandLineInvocation.directiveTexts;
-    rootSelectionPaths =
-      CommandLineInvocation.selectionPathsOfExpressions rootSelectionPaths;
-    selectionBranches;
-  }
-
 let operationDefinition ?operationName ?(variableDefinitions = [])
     ?(variableAssignments = []) ?(directives = []) rootSelectionPaths
     selectionBranches =
@@ -78,29 +70,20 @@ let operationDefinition ?operationName ?(variableDefinitions = [])
       List.map
         (fun (name, value) -> (name, CliArgument.valueOfRawValue value))
         variableAssignments;
-    operationBody =
-      definitionBody directives rootSelectionPaths selectionBranches;
-  }
-
-let structuredFragmentDefinition ?(directives = []) fragmentName
-    fragmentTypeCondition rootSelectionPaths selectionBranches =
-  {
-    CommandLineInvocation.fragmentName;
-    fragmentTypeCondition;
-    fragmentBody =
-      definitionBody directives rootSelectionPaths selectionBranches;
+    operationDirectiveTexts = directives;
+    rootSelectionPaths =
+      CommandLineInvocation.selectionPathsOfExpressions rootSelectionPaths;
+    selectionBranches;
   }
 
 let selectionBranchesOfOperation operationDefinition =
-  CommandLineInvocation.(operationDefinition.operationBody.selectionBranches)
+  operationDefinition.CommandLineInvocation.selectionBranches
 
 let invocationOfOperations ?selectedOperationName
-    ?(structuredFragmentDefinitions = []) ?(rawFragmentDefinitionTexts = [])
-    operationDefinitions =
+    ?(rawFragmentDefinitionTexts = []) operationDefinitions =
   {
     CommandLineInvocation.operationDefinitions;
     selectedOperationName;
-    structuredFragmentDefinitions;
     rawFragmentDefinitionTexts;
   }
 
@@ -228,40 +211,6 @@ let testNestedFieldBranchLowering () =
      }"
     (queryOfLoweredRequest request)
 
-let testStructuredFragmentDefinitionLowering () =
-  let request =
-    LoweringEngine.lower
-      (invocationOfOperations
-         ~structuredFragmentDefinitions:
-           [
-             structuredFragmentDefinition "mediaCore" "Media" [ "popularity" ]
-               [ selectionBranch [ fieldSegment "title" [] ] [ "romaji" ] ];
-           ]
-         [
-           operationDefinition []
-             [
-               selectionBranch
-                 [ fieldSegment "media" [ ("id", "1") ] ]
-                 [ "id"; "...mediaCore" ];
-             ];
-         ])
-  in
-
-  assertEqual
-    "query {\n\
-    \  Media(id: 1) {\n\
-    \    id\n\
-    \    ...mediaCore\n\
-    \  }\n\
-     }\n\n\
-     fragment mediaCore on Media {\n\
-    \  popularity\n\
-    \  title {\n\
-    \    romaji\n\
-    \  }\n\
-     }"
-    (queryOfLoweredRequest request)
-
 let testInlineFragmentBranchLowering () =
   let request =
     LoweringEngine.lower
@@ -319,11 +268,8 @@ let testFragmentSpreadDirectiveLowering () =
   let request =
     LoweringEngine.lower
       (invocationOfOperations
-         ~structuredFragmentDefinitions:
-           [
-             structuredFragmentDefinition "mediaCore" "Media" [ "popularity" ]
-               [];
-           ]
+         ~rawFragmentDefinitionTexts:
+           [ "fragment mediaCore on Media { popularity }" ]
          [
            operationDefinition []
              [
@@ -345,22 +291,18 @@ let testFragmentSpreadDirectiveLowering () =
     \    ...mediaCore @include(if: $withCore)\n\
     \  }\n\
      }\n\n\
-     fragment mediaCore on Media {\n\
-    \  popularity\n\
-     }"
+     fragment mediaCore on Media { popularity }"
     (queryOfLoweredRequest request)
 
-let testRawAndStructuredFragmentsCoexist () =
+let testRawFragmentDefinitionsKeepTheirOrder () =
   let request =
     LoweringEngine.lower
       (invocationOfOperations
-         ~structuredFragmentDefinitions:
-           [
-             structuredFragmentDefinition "mediaCore" "Media" [ "popularity" ]
-               [];
-           ]
          ~rawFragmentDefinitionTexts:
-           [ "fragment legacyFragment on Media { favourites }" ]
+           [
+             "fragment mediaCore on Media { popularity }";
+             "fragment legacyFragment on Media { favourites }";
+           ]
          [
            operationDefinition []
              [
@@ -378,9 +320,7 @@ let testRawAndStructuredFragmentsCoexist () =
     \    ...legacyFragment\n\
     \  }\n\
      }\n\n\
-     fragment mediaCore on Media {\n\
-    \  popularity\n\
-     }\n\n\
+     fragment mediaCore on Media { popularity }\n\n\
      fragment legacyFragment on Media { favourites }"
     (queryOfLoweredRequest request)
 
@@ -450,10 +390,8 @@ let testOperationParsing () =
         "var:userName";
         "--selection-set";
         "id,name";
-        "--fragment";
-        "userCore:User";
-        "--selection-set";
-        "id";
+        "--fragment-definition";
+        "fragment userCore on User { id }";
       ]
   with
   | Ok invocation ->
@@ -477,7 +415,7 @@ let testOperationParsing () =
       assertEqual "1"
         (string_of_int
            (List.length
-              invocation.CommandLineInvocation.structuredFragmentDefinitions))
+              invocation.CommandLineInvocation.rawFragmentDefinitionTexts))
   | Error message -> failwith message
 
 let testVariableAssignmentsPreserveGraphQlVariableNames () =
@@ -868,10 +806,9 @@ let () =
   testExplicitOperationWithMultipleRootFields ();
   testFieldAliasAndDirectiveLowering ();
   testNestedFieldBranchLowering ();
-  testStructuredFragmentDefinitionLowering ();
   testInlineFragmentBranchLowering ();
   testFragmentSpreadDirectiveLowering ();
-  testRawAndStructuredFragmentsCoexist ();
+  testRawFragmentDefinitionsKeepTheirOrder ();
   testMultipleOperationDocumentLowering ();
   testSelectionSetCompatibilityAliasParsing ();
   testOperationParsing ();

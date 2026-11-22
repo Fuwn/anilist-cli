@@ -253,10 +253,8 @@ class CliIntegrationTest(unittest.TestCase):
             "viewer",
             "--selection-set",
             "id",
-            "--fragment",
-            "core:Media",
-            "--selection-set",
-            "id",
+            "--fragment-definition",
+            "fragment core on Media { id }",
             "--operation",
             "query:Second",
             "--variable",
@@ -265,10 +263,8 @@ class CliIntegrationTest(unittest.TestCase):
             "media",
             "--selection-set",
             "...core",
-            "--fragment",
-            "extra:Media",
-            "--selection-set",
-            "title.romaji",
+            "--fragment-definition",
+            "fragment extra on Media { title { romaji } }",
             "--execute-operation-name",
             "Second",
         )
@@ -283,13 +279,13 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertLess(query.index("query First"), query.index("query Second"))
         self.assertLess(query.index("fragment core"), query.index("fragment extra"))
 
-    def test_fragment_target_rejects_operation_options(self):
+    def test_fragment_definition_ends_the_current_operation(self):
         result = self.run_cli(
             "query",
             "--selection-set",
             "viewer.id",
-            "--fragment",
-            "core:Media",
+            "--fragment-definition",
+            "fragment core on Media { id }",
             "--variable",
             "id=1",
         )

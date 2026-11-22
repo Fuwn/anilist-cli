@@ -23,26 +23,14 @@ type operation = {
   selectionSet : selection list;
 }
 
-type fragmentDefinition =
-  | Structured of {
-      name : string;
-      typeCondition : string;
-      directives : string list;
-      selectionSet : selection list;
-    }
-  | Raw of string
+type t = { operations : operation list; fragmentDefinitions : string list }
 
-type t = {
-  operations : operation list;
-  fragmentDefinitions : fragmentDefinition list;
-}
-
-let rawFragmentDefinition text =
+let fragmentDefinitionOfText text =
   let trimmedText = String.trim text in
 
   if trimmedText = "" then
     invalid_arg "Fragment definition text cannot be empty"
-  else Raw trimmedText
+  else trimmedText
 
 let renderDirectiveText text =
   let trimmed = String.trim text in
@@ -95,10 +83,6 @@ and renderSelectionSet ~indentationLevel selectionSet =
   |> List.map (renderSelection ~indentationLevel)
   |> String.concat "\n"
 
-let renderDefinition header selectionSet =
-  Printf.sprintf "%s {\n%s\n}" header
-    (renderSelectionSet ~indentationLevel:1 selectionSet)
-
 let renderOperation
     { operationType; name; variableDefinitions; directives; selectionSet } =
   let keyword =
@@ -114,20 +98,11 @@ let renderOperation
     | _ -> Printf.sprintf "(%s)" (String.concat ", " variableDefinitions)
   in
 
-  renderDefinition
-    (keyword ^ renderedName ^ renderedVariableDefinitions
-    ^ renderDirectives directives)
-    selectionSet
-
-let renderFragmentDefinition = function
-  | Structured { name; typeCondition; directives; selectionSet } ->
-      renderDefinition
-        (Printf.sprintf "fragment %s on %s%s" name typeCondition
-           (renderDirectives directives))
-        selectionSet
-  | Raw text -> text
+  Printf.sprintf "%s%s%s%s {\n%s\n}" keyword renderedName
+    renderedVariableDefinitions
+    (renderDirectives directives)
+    (renderSelectionSet ~indentationLevel:1 selectionSet)
 
 let render { operations; fragmentDefinitions } =
-  List.map renderOperation operations
-  @ List.map renderFragmentDefinition fragmentDefinitions
+  List.map renderOperation operations @ fragmentDefinitions
   |> String.concat "\n\n"
