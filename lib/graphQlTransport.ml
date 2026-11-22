@@ -18,19 +18,16 @@ let requestTimeoutSeconds () =
             "ANILIST_REQUEST_TIMEOUT_SECONDS must be a positive finite number")
 
 let executeQuery ~operationName ~variables ~headers:additionalHeaders ~query =
-  let requestBodyFields = [ ("query", `String query) ] in
-  let requestBodyFields =
-    match operationName with
-    | Some operationName ->
-        requestBodyFields @ [ ("operationName", `String operationName) ]
-    | None -> requestBodyFields
-  in
   let requestBody =
-    match variables with
-    | Some variables ->
-        `Assoc (requestBodyFields @ [ ("variables", variables) ])
-        |> Yojson.Safe.to_string
-    | None -> `Assoc requestBodyFields |> Yojson.Safe.to_string
+    `Assoc
+      ([ ("query", `String query) ]
+      @ Option.to_list
+          (Option.map
+             (fun operationName -> ("operationName", `String operationName))
+             operationName)
+      @ Option.to_list
+          (Option.map (fun variables -> ("variables", variables)) variables))
+    |> Yojson.Safe.to_string
   in
   let headers =
     List.fold_left

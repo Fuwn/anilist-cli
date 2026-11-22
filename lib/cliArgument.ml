@@ -10,15 +10,14 @@ type value =
 
 let graphQlStringLiteral value = Yojson.Safe.to_string (`String value)
 
+let looksLikeFloat text =
+  String.contains text '.' || String.contains text 'e'
+  || String.contains text 'E'
+
 let graphQlFloatLiteral value =
   let literal = Yojson.Safe.to_string (`Float value) in
 
-  if
-    String.contains literal '.'
-    || String.contains literal 'e'
-    || String.contains literal 'E'
-  then literal
-  else literal ^ ".0"
+  if looksLikeFloat literal then literal else literal ^ ".0"
 
 let rec graphQlLiteralOfJson = function
   | `Null -> "null"
@@ -62,11 +61,6 @@ let jsonLiteralOfValue = function
       invalid_arg "GraphQL variables cannot contain variable references"
   | Json value -> value
 
-let rawValueLooksLikeFloat rawValue =
-  String.contains rawValue '.'
-  || String.contains rawValue 'e'
-  || String.contains rawValue 'E'
-
 let forcedValueOfRawValue rawValue =
   [
     ("string:", fun text -> String text);
@@ -87,11 +81,10 @@ let valueOfRawValue rawValue =
       | "false" -> Boolean false
       | _ -> (
           match int_of_string_opt rawValue with
-          | Some value when not (rawValueLooksLikeFloat rawValue) ->
-              Integer value
+          | Some value when not (looksLikeFloat rawValue) -> Integer value
           | _ -> (
               match float_of_string_opt rawValue with
-              | Some value when rawValueLooksLikeFloat rawValue -> Float value
+              | Some value when looksLikeFloat rawValue -> Float value
               | _ ->
                   let seemsJson =
                     String.length rawValue > 1

@@ -96,7 +96,9 @@ let usageText =
 
 let withUsageText message = message ^ "\n\n" ^ usageText
 let raiseUsageError message = invalid_arg (withUsageText message)
-let isLongOption token = String.length token > 2 && String.sub token 0 2 = "--"
+
+let isLongOption token =
+  String.length token > 2 && String.starts_with ~prefix:"--" token
 
 let optionNameAndValueOfEqualsSyntax token =
   match String.index_opt token '=' with
@@ -175,9 +177,7 @@ let operationHeaderOfText operationText =
   | Some operationType, operationName -> (operationType, operationName)
 
 let fieldSelectionOfText selectionText =
-  let aliasValue, fieldName =
-    splitAliasAndFieldName (String.trim selectionText)
-  in
+  let aliasValue, fieldName = splitAliasAndFieldName selectionText in
   let trimmedFieldName = String.trim fieldName in
 
   if trimmedFieldName = "" then raiseUsageError "Field path cannot be empty."
@@ -273,7 +273,7 @@ let ensureSelectionPathCanAcceptChildren parentPath =
 
 let withMappedLastSelection branch mapSelection =
   match List.rev branch.parentPath with
-  | [] -> raise (Invalid_argument "Empty selection branch")
+  | [] -> invalid_arg "Empty selection branch"
   | last :: rest ->
       { branch with parentPath = List.rev (mapSelection last :: rest) }
 
@@ -368,7 +368,7 @@ let resolvedFragmentPath ~requiredMessage ~emptyMessage selectionOfName
         match parserState.currentBranch with
         | Some branch ->
             (ensureSelectionPathCanAcceptChildren branch.parentPath, bareText)
-        | None -> (parserState.currentDefaultSelectionPathPrefix, bareText))
+        | None -> ([], bareText))
   in
   let name = String.trim bareText in
 
