@@ -36,7 +36,7 @@ let executeInvocation ~headers ~endpoint invocation =
   let loweredRequest = LoweringEngine.lower invocation in
   let query = GraphQlDocument.render loweredRequest.LoweringEngine.document in
   let variables =
-    match loweredRequest.LoweringEngine.loweredVariableAssignments with
+    match loweredRequest.LoweringEngine.selectedVariableAssignments with
     | [] -> None
     | variableAssignments ->
         Some
@@ -47,7 +47,7 @@ let executeInvocation ~headers ~endpoint invocation =
   in
 
   GraphQlTransport.executeQuery
-    ~operationName:loweredRequest.LoweringEngine.selectedOperationName
+    ~operationName:invocation.CommandLineInvocation.selectedOperationName
     ~variables ~headers ~endpoint ~query
 
 let () =
