@@ -25,7 +25,7 @@ type operation = {
 
 type t = { operations : operation list; fragmentDefinitions : string list }
 
-let renderDirectiveText text =
+let normalizedDirectiveText text =
   let trimmed = String.trim text in
 
   if trimmed = "" then invalid_arg "Directive text cannot be empty"
@@ -33,9 +33,7 @@ let renderDirectiveText text =
   else "@" ^ trimmed
 
 let renderDirectives directives =
-  directives
-  |> List.map (fun directive -> " " ^ renderDirectiveText directive)
-  |> String.concat ""
+  directives |> List.map (fun directive -> " " ^ directive) |> String.concat ""
 
 let renderArguments = function
   | [] -> ""

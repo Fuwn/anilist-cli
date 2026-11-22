@@ -643,7 +643,7 @@ let handleVariable parserState variableAssignmentText =
       })
 
 let handleDirective parserState directiveText =
-  let directiveText = GraphQlDocument.renderDirectiveText directiveText in
+  let directiveText = GraphQlDocument.normalizedDirectiveText directiveText in
 
   updateBranchOrFallback parserState
     ~onBranch:(fun branch -> withAddedBranchDirective branch directiveText)
