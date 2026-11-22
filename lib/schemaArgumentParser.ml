@@ -51,20 +51,17 @@ let parseArguments arguments =
           setOption "directive" value accumulated.directiveName
         in
         loop { accumulated with directiveName } rest
-    | argument :: rest when String.starts_with ~prefix:"--type=" argument ->
-        loop accumulated
-          ("--type"
-          :: StringPrefix.valueWithoutPrefix ~prefix:"--type=" argument
-          :: rest)
-    | argument :: rest when String.starts_with ~prefix:"--directive=" argument
-      ->
-        loop accumulated
-          ("--directive"
-          :: StringPrefix.valueWithoutPrefix ~prefix:"--directive=" argument
-          :: rest)
-    | argument :: _ ->
-        Error
-          (Printf.sprintf "Invalid schema argument: %s\n\n%s" argument usageText)
+    | argument :: rest -> (
+        match
+          ( StringPrefix.valueWithoutPrefix ~prefix:"--type=" argument,
+            StringPrefix.valueWithoutPrefix ~prefix:"--directive=" argument )
+        with
+        | Some value, _ -> loop accumulated ("--type" :: value :: rest)
+        | None, Some value -> loop accumulated ("--directive" :: value :: rest)
+        | None, None ->
+            Error
+              (Printf.sprintf "Invalid schema argument: %s\n\n%s" argument
+                 usageText))
   in
   loop { typeName = None; directiveName = None } arguments
 

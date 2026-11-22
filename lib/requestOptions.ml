@@ -3,8 +3,6 @@ type t = {
   remainingArguments : string list;
 }
 
-let headerOptionName = "header"
-
 let headerPairOfText headerText =
   match String.index_opt headerText ':' with
   | Some separatorIndex ->
@@ -19,7 +17,6 @@ let headerPairOfText headerText =
   | None -> Error "Header value must use 'Name: Value' syntax."
 
 let extractionOfArguments arguments =
-  let headerPrefix = "--" ^ headerOptionName ^ "=" in
   let rec extract accumulatedHeaderPairs accumulatedArguments = function
     | [] ->
         Ok
@@ -36,23 +33,14 @@ let extractionOfArguments arguments =
               accumulatedArguments remainingArguments
         | Error message ->
             Error (Printf.sprintf "%s\n\nUse --header 'Name: Value'." message))
-    | argument :: remainingArguments
-      when String.starts_with ~prefix:headerPrefix argument -> (
-        let headerText =
-          String.sub argument
-            (String.length headerPrefix)
-            (String.length argument - String.length headerPrefix)
-        in
-        match headerPairOfText headerText with
-        | Ok headerPair ->
-            extract
-              (headerPair :: accumulatedHeaderPairs)
-              accumulatedArguments remainingArguments
-        | Error message ->
-            Error (Printf.sprintf "%s\n\nUse --header 'Name: Value'." message))
-    | argument :: remainingArguments ->
-        extract accumulatedHeaderPairs
-          (argument :: accumulatedArguments)
-          remainingArguments
+    | argument :: remainingArguments -> (
+        match StringPrefix.valueWithoutPrefix ~prefix:"--header=" argument with
+        | Some headerText ->
+            extract accumulatedHeaderPairs accumulatedArguments
+              ("--header" :: headerText :: remainingArguments)
+        | None ->
+            extract accumulatedHeaderPairs
+              (argument :: accumulatedArguments)
+              remainingArguments)
   in
   extract [] [] arguments

@@ -10,11 +10,6 @@ type value =
 
 type t = { name : string; value : value }
 
-let stringPrefix = "string:"
-let enumPrefix = "enum:"
-let variablePrefix = "var:"
-let jsonPrefix = "json:"
-
 let graphQlStringLiteral value = Yojson.Safe.to_string (`String value)
 
 let graphQlFloatLiteral value =
@@ -74,37 +69,40 @@ let rawValueLooksLikeFloat rawValue =
   || String.contains rawValue 'e'
   || String.contains rawValue 'E'
 
-let valueOfRawValue rawValue =
-  if String.starts_with ~prefix:stringPrefix rawValue then
-    String (StringPrefix.valueWithoutPrefix ~prefix:stringPrefix rawValue)
-  else if String.starts_with ~prefix:enumPrefix rawValue then
-    Enum (StringPrefix.valueWithoutPrefix ~prefix:enumPrefix rawValue)
-  else if String.starts_with ~prefix:variablePrefix rawValue then
-    Variable (StringPrefix.valueWithoutPrefix ~prefix:variablePrefix rawValue)
-  else if String.starts_with ~prefix:jsonPrefix rawValue then
-    Json
-      (Yojson.Safe.from_string
-         (StringPrefix.valueWithoutPrefix ~prefix:jsonPrefix rawValue))
-  else
-    match String.lowercase_ascii rawValue with
-    | "null" -> Null
-    | "true" -> Boolean true
-    | "false" -> Boolean false
-    | _ -> (
-        match int_of_string_opt rawValue with
-        | Some value when not (rawValueLooksLikeFloat rawValue) -> Integer value
-        | _ -> (
-            match float_of_string_opt rawValue with
-            | Some value when rawValueLooksLikeFloat rawValue -> Float value
-            | _ ->
-                let seemsJson =
-                  String.length rawValue > 1
-                  && match rawValue.[0] with '{' | '[' -> true | _ -> false
-                in
+let forcedValueOfRawValue rawValue =
+  [
+    ("string:", fun text -> String text);
+    ("enum:", fun text -> Enum text);
+    ("var:", fun text -> Variable text);
+    ("json:", fun text -> Json (Yojson.Safe.from_string text));
+  ]
+  |> List.find_map (fun (prefix, valueOfText) ->
+      StringPrefix.valueWithoutPrefix ~prefix rawValue |> Option.map valueOfText)
 
-                if seemsJson then
-                  try Json (Yojson.Safe.from_string rawValue)
-                  with Yojson.Json_error _ -> String rawValue
-                else String rawValue))
+let valueOfRawValue rawValue =
+  match forcedValueOfRawValue rawValue with
+  | Some value -> value
+  | None -> (
+      match String.lowercase_ascii rawValue with
+      | "null" -> Null
+      | "true" -> Boolean true
+      | "false" -> Boolean false
+      | _ -> (
+          match int_of_string_opt rawValue with
+          | Some value when not (rawValueLooksLikeFloat rawValue) ->
+              Integer value
+          | _ -> (
+              match float_of_string_opt rawValue with
+              | Some value when rawValueLooksLikeFloat rawValue -> Float value
+              | _ ->
+                  let seemsJson =
+                    String.length rawValue > 1
+                    && match rawValue.[0] with '{' | '[' -> true | _ -> false
+                  in
+
+                  if seemsJson then
+                    try Json (Yojson.Safe.from_string rawValue)
+                    with Yojson.Json_error _ -> String rawValue
+                  else String rawValue)))
 
 let make ~name ~rawValue = { name; value = valueOfRawValue rawValue }

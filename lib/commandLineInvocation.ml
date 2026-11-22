@@ -136,8 +136,6 @@ let usageText =
 
 let withUsageText message = message ^ "\n\n" ^ usageText
 let raiseUsageError message = invalid_arg (withUsageText message)
-let currentBranchPathPrefix = "./"
-let absoluteBranchPathPrefix = "/"
 let isLongOption token = String.length token > 2 && String.sub token 0 2 = "--"
 
 let optionNameAndValueOfEqualsSyntax token =
@@ -260,59 +258,50 @@ let fieldSegmentsOfPath fieldPath =
   |> List.map (fun segmentText ->
       FieldSegment (fieldPathSegmentOfText segmentText))
 
-let rootFieldPathPrefix = "root:"
-let rootSelectionPathPrefix = "/"
-let fragmentSpreadPrefix = "..."
-
 let scopeAndFieldPathOfCliField fieldPath =
-  if String.starts_with ~prefix:rootFieldPathPrefix fieldPath then
-    ( `Root,
-      StringPrefix.valueWithoutPrefix ~prefix:rootFieldPathPrefix fieldPath )
-  else if String.starts_with ~prefix:rootSelectionPathPrefix fieldPath then
-    ( `Root,
-      StringPrefix.valueWithoutPrefix ~prefix:rootSelectionPathPrefix fieldPath
-    )
-  else (`Relative, fieldPath)
+  match
+    ( StringPrefix.valueWithoutPrefix ~prefix:"root:" fieldPath,
+      StringPrefix.valueWithoutPrefix ~prefix:"/" fieldPath )
+  with
+  | Some rootFieldPath, _ | None, Some rootFieldPath -> (`Root, rootFieldPath)
+  | None, None -> (`Relative, fieldPath)
 
 let segmentsOfScopedPath scopedPath =
-  if String.starts_with ~prefix:"...on:" scopedPath then
-    let inlineFragmentPath =
-      StringPrefix.valueWithoutPrefix ~prefix:"...on:" scopedPath
-    in
+  match
+    ( StringPrefix.valueWithoutPrefix ~prefix:"...on:" scopedPath,
+      StringPrefix.valueWithoutPrefix ~prefix:"..." scopedPath )
+  with
+  | Some inlineFragmentPath, _ -> (
+      match String.split_on_char '.' inlineFragmentPath with
+      | typeCondition :: (_ :: _ as remainingSegments)
+        when String.trim typeCondition <> "" ->
+          let fields =
+            fieldSegmentsOfPath (String.concat "." remainingSegments)
+          in
 
-    match String.split_on_char '.' inlineFragmentPath with
-    | typeCondition :: (_ :: _ as remainingSegments)
-      when String.trim typeCondition <> "" ->
-        let fields =
-          fieldSegmentsOfPath (String.concat "." remainingSegments)
-        in
+          if fields = [] then
+            invalid_arg "Inline fragments require a selection set.";
 
-        if fields = [] then
-          invalid_arg "Inline fragments require a selection set.";
+          InlineFragmentSegment
+            {
+              inlineFragmentTypeCondition = String.trim typeCondition;
+              inlineFragmentDirectiveTexts = [];
+            }
+          :: fields
+      | _ ->
+          invalid_arg
+            "Inline fragments require a type condition and selection set")
+  | None, Some fragmentSpreadText ->
+      let fragmentSpreadName = String.trim fragmentSpreadText in
 
-        InlineFragmentSegment
-          {
-            inlineFragmentTypeCondition = String.trim typeCondition;
-            inlineFragmentDirectiveTexts = [];
-          }
-        :: fields
-    | _ ->
-        invalid_arg
-          "Inline fragments require a type condition and selection set"
-  else if String.starts_with ~prefix:fragmentSpreadPrefix scopedPath then (
-    let fragmentSpreadName =
-      StringPrefix.valueWithoutPrefix ~prefix:fragmentSpreadPrefix scopedPath
-      |> String.trim
-    in
+      if fragmentSpreadName = "" then
+        invalid_arg "Fragment spreads require a name.";
 
-    if fragmentSpreadName = "" then
-      invalid_arg "Fragment spreads require a name.";
-
-    [
-      FragmentSpreadSegment
-        { fragmentSpreadName; fragmentSpreadDirectiveTexts = [] };
-    ])
-  else fieldSegmentsOfPath scopedPath
+      [
+        FragmentSpreadSegment
+          { fragmentSpreadName; fragmentSpreadDirectiveTexts = [] };
+      ]
+  | None, None -> fieldSegmentsOfPath scopedPath
 
 let selectionPathsOfExpressions fieldExpressions =
   fieldExpressions
@@ -439,15 +428,13 @@ let ensureSelectionPathCanAcceptChildren selectionPathSegments =
   else selectionPathSegments
 
 let classifiedBranchPath pathText =
-  if String.starts_with ~prefix:currentBranchPathPrefix pathText then
-    ( `Relative,
-      StringPrefix.valueWithoutPrefix ~prefix:currentBranchPathPrefix pathText
-    )
-  else if String.starts_with ~prefix:absoluteBranchPathPrefix pathText then
-    ( `Absolute,
-      StringPrefix.valueWithoutPrefix ~prefix:absoluteBranchPathPrefix pathText
-    )
-  else (`Default, pathText)
+  match
+    ( StringPrefix.valueWithoutPrefix ~prefix:"./" pathText,
+      StringPrefix.valueWithoutPrefix ~prefix:"/" pathText )
+  with
+  | Some relativePath, _ -> (`Relative, relativePath)
+  | None, Some absolutePath -> (`Absolute, absolutePath)
+  | None, None -> (`Default, pathText)
 
 let currentBranchSegmentsOrRaise parserState ~requiredMessage =
   match parserState.currentBranch with
