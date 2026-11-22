@@ -318,11 +318,12 @@ class CliIntegrationTest(unittest.TestCase):
             "query {\n  Media {\n    root: id\n  }\n}",
         )
 
-    def test_removed_slash_scope_is_part_of_the_field_name(self):
-        self.assert_query(
-            ["media", "--selection-set", "/id"],
-            "query {\n  Media {\n    /id\n  }\n}",
-        )
+    def test_slash_in_selection_set_is_local_error(self):
+        result = self.run_cli("media", "--selection-set", "/id")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("scope a path with --field", result.stderr)
+        self.assertEqual(self.requests, [])
 
     def test_schema_filters_only_directives(self):
         self.response = {

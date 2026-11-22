@@ -276,6 +276,11 @@ let selectionPathsOfExpressions selectionExpressions =
 
       List.map
         (fun path ->
+          if String.contains path '/' then
+            invalid_arg
+              "Selection paths cannot contain /; scope a path with --field \
+               instead.";
+
           let segments = segmentsOfSelectionPath path in
 
           if segments = [] then invalid_arg "Selection path cannot be empty.";
