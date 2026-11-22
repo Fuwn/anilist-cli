@@ -573,8 +573,6 @@ let selectedVariables invocation =
            |> List.map (fun (name, value) ->
                (name, CliArgument.jsonLiteralOfValue value))))
 
-exception HelpRequested
-
 let replaceCurrentSelectionBranchWithSegments parserState resolvedSegments =
   let rec extendsPath parent child =
     match (parent, child) with
@@ -734,8 +732,11 @@ let handlePositionalToken parserState token =
             (resolvedSelectionPathSegmentsOfFieldPath parserState token))
 
 let rec parseRemainingArguments parserState = function
-  | [] -> currentInvocationOfState parserState
-  | "--help" :: _ -> raise HelpRequested
+  | [] ->
+      Result.map
+        (fun invocation -> `Invocation invocation)
+        (validatedInvocation (currentInvocationOfState parserState))
+  | "--help" :: _ -> Ok `Help
   | token :: remainingTokens when isLongOption token ->
       let (optionName, optionValue), remainingTokens =
         optionPairOfToken token remainingTokens
@@ -757,13 +758,6 @@ let ofArguments arguments =
   | [] -> Error usageText
   | "help" :: _ -> Ok `Help
   | _ -> (
-      try
-        let invocation = parseRemainingArguments initialParserState arguments in
-
-        Result.map
-          (fun invocation -> `Invocation invocation)
-          (validatedInvocation invocation)
-      with
-      | HelpRequested -> Ok `Help
+      try parseRemainingArguments initialParserState arguments with
       | Invalid_argument message -> Error message
       | Yojson.Json_error message -> Error ("Invalid JSON: " ^ message))
