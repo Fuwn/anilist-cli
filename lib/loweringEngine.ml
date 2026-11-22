@@ -60,10 +60,9 @@ let lowerOperationDefinition
     selectionSet =
       lowerSelectionPaths ~isAtOperationRoot:true rootSelectionPaths
       @ List.map
-          (fun { CommandLineInvocation.selectionPathSegments; selectionPaths }
-             ->
-            lowerSelectionPath ~isAtOperationRoot:true
-              ~leafSelectionPaths:selectionPaths selectionPathSegments)
+          (fun { CommandLineInvocation.parentPath; leafSelectionPaths } ->
+            lowerSelectionPath ~isAtOperationRoot:true ~leafSelectionPaths
+              parentPath)
           selectionBranches;
   }
 

@@ -6,8 +6,8 @@ type operationType = GraphQlDocument.operationType =
 type selectionPath = GraphQlDocument.selection list
 
 type selectionBranch = {
-  selectionPathSegments : selectionPath;
-  selectionPaths : selectionPath list;
+  parentPath : selectionPath;
+  leafSelectionPaths : selectionPath list;
 }
 
 type operationDefinition = {
@@ -110,13 +110,13 @@ let optionNameAndValueOfEqualsSyntax token =
       Some (optionName, optionValue)
   | None -> None
 
-let splitAliasAndFieldName pathSegment =
-  match String.split_on_char ':' pathSegment with
+let splitAliasAndFieldName selectionText =
+  match String.split_on_char ':' selectionText with
   | [ fieldName ] -> (None, fieldName)
   | [ alias; fieldName ] -> (Some alias, fieldName)
   | _ ->
       raiseUsageError
-        (Printf.sprintf "Invalid field path segment %s" pathSegment)
+        (Printf.sprintf "Invalid field path segment %s" selectionText)
 
 let operationTypeOfToken = function
   | "query" -> Some Query
@@ -174,9 +174,9 @@ let operationHeaderOfText operationText =
   | Some _, Some "" -> raiseUsageError "Operation names cannot be empty."
   | Some operationType, operationName -> (operationType, operationName)
 
-let fieldPathSegmentOfText pathSegmentText =
+let fieldSelectionOfText selectionText =
   let aliasValue, fieldName =
-    splitAliasAndFieldName (String.trim pathSegmentText)
+    splitAliasAndFieldName (String.trim selectionText)
   in
   let trimmedFieldName = String.trim fieldName in
 
@@ -198,28 +198,26 @@ let fieldPathSegmentOfText pathSegmentText =
         selectionSet = [];
       }
 
-let fieldSegmentsOfPath fieldPath =
+let fieldPathOfText fieldPath =
   fieldPath |> String.split_on_char '.' |> List.map String.trim
-  |> List.filter (fun segmentText -> segmentText <> "")
-  |> List.map fieldPathSegmentOfText
+  |> List.filter (fun selectionText -> selectionText <> "")
+  |> List.map fieldSelectionOfText
 
-let nonemptyFieldSegmentsOfPath fieldPath =
-  match fieldSegmentsOfPath fieldPath with
+let nonemptyFieldPathOfText fieldPath =
+  match fieldPathOfText fieldPath with
   | [] -> raiseUsageError "Selection path cannot be empty."
-  | segments -> segments
+  | fieldPath -> fieldPath
 
-let segmentsOfSelectionPath selectionPath =
+let selectionPathOfText pathText =
   match
-    ( StringPrefix.valueWithoutPrefix ~prefix:"...on:" selectionPath,
-      StringPrefix.valueWithoutPrefix ~prefix:"..." selectionPath )
+    ( StringPrefix.valueWithoutPrefix ~prefix:"...on:" pathText,
+      StringPrefix.valueWithoutPrefix ~prefix:"..." pathText )
   with
   | Some inlineFragmentPath, _ -> (
       match String.split_on_char '.' inlineFragmentPath with
-      | typeCondition :: (_ :: _ as remainingSegments)
+      | typeCondition :: (_ :: _ as fieldPathParts)
         when String.trim typeCondition <> "" ->
-          let fields =
-            fieldSegmentsOfPath (String.concat "." remainingSegments)
-          in
+          let fields = fieldPathOfText (String.concat "." fieldPathParts) in
 
           if fields = [] then
             invalid_arg "Inline fragments require a selection set.";
@@ -240,7 +238,7 @@ let segmentsOfSelectionPath selectionPath =
       if name = "" then invalid_arg "Fragment spreads require a name.";
 
       [ GraphQlDocument.FragmentSpread { name; directives = [] } ]
-  | None, None -> fieldSegmentsOfPath selectionPath
+  | None, None -> fieldPathOfText pathText
 
 let selectionPathsOfExpression selectionExpression =
   let paths =
@@ -256,47 +254,45 @@ let selectionPathsOfExpression selectionExpression =
         invalid_arg
           "Selection paths cannot contain /; scope a path with --field instead.";
 
-      let segments = segmentsOfSelectionPath path in
+      let selectionPath = selectionPathOfText path in
 
-      if segments = [] then invalid_arg "Selection path cannot be empty.";
+      if selectionPath = [] then invalid_arg "Selection path cannot be empty.";
 
-      segments)
+      selectionPath)
 
-let segmentsEndInFragmentSpread selectionPathSegments =
-  match List.rev selectionPathSegments with
+let pathEndsInFragmentSpread parentPath =
+  match List.rev parentPath with
   | GraphQlDocument.FragmentSpread _ :: _ -> true
   | (GraphQlDocument.Field _ | GraphQlDocument.InlineFragment _) :: _ | [] ->
       false
 
-let ensureSelectionPathCanAcceptChildren selectionPathSegments =
-  if segmentsEndInFragmentSpread selectionPathSegments then
+let ensureSelectionPathCanAcceptChildren parentPath =
+  if pathEndsInFragmentSpread parentPath then
     raiseUsageError "Fragment spreads cannot contain child selections."
-  else selectionPathSegments
+  else parentPath
 
-let updateLastSegment branch mapSegment =
-  match List.rev branch.selectionPathSegments with
+let withMappedLastSelection branch mapSelection =
+  match List.rev branch.parentPath with
   | [] -> raise (Invalid_argument "Empty selection branch")
   | last :: rest ->
-      { branch with selectionPathSegments = List.rev (mapSegment last :: rest) }
+      { branch with parentPath = List.rev (mapSelection last :: rest) }
 
 let withAddedBranchSelectionPaths branch selectionPaths =
-  if segmentsEndInFragmentSpread branch.selectionPathSegments then
+  if pathEndsInFragmentSpread branch.parentPath then
     raiseUsageError "Fragment spreads cannot define a selection set."
-  else { branch with selectionPaths = branch.selectionPaths @ selectionPaths }
+  else
+    {
+      branch with
+      leafSelectionPaths = branch.leafSelectionPaths @ selectionPaths;
+    }
 
-let withPushedFieldSelectionPathSegment branch fieldPath =
-  let parentSegments =
-    ensureSelectionPathCanAcceptChildren branch.selectionPathSegments
-  in
+let withExtendedParentPath branch fieldPath =
+  let parentPath = ensureSelectionPathCanAcceptChildren branch.parentPath in
 
-  {
-    branch with
-    selectionPathSegments =
-      parentSegments @ nonemptyFieldSegmentsOfPath fieldPath;
-  }
+  { branch with parentPath = parentPath @ nonemptyFieldPathOfText fieldPath }
 
 let withAddedBranchFieldArgumentPair branch fieldArgumentPair =
-  updateLastSegment branch (function
+  withMappedLastSelection branch (function
     | GraphQlDocument.Field field ->
         GraphQlDocument.Field
           { field with arguments = field.arguments @ [ fieldArgumentPair ] }
@@ -306,7 +302,7 @@ let withAddedBranchFieldArgumentPair branch fieldArgumentPair =
            field.")
 
 let withUpdatedBranchFieldAlias branch fieldAlias =
-  updateLastSegment branch (function
+  withMappedLastSelection branch (function
     | GraphQlDocument.Field field ->
         GraphQlDocument.Field
           {
@@ -318,7 +314,7 @@ let withUpdatedBranchFieldAlias branch fieldAlias =
           "--alias requires the current selection branch to end in a field.")
 
 let withAddedBranchDirective branch directiveText =
-  updateLastSegment branch (function
+  withMappedLastSelection branch (function
     | GraphQlDocument.Field field ->
         GraphQlDocument.Field
           { field with directives = field.directives @ [ directiveText ] }
@@ -344,45 +340,43 @@ let classifiedBranchPath pathText =
   | None, Some absolutePath -> (`Absolute, absolutePath)
   | None, None -> (`Default, pathText)
 
-let currentBranchSegmentsOrRaise parserState ~requiredMessage =
+let currentBranchPathOrRaise parserState ~requiredMessage =
   match parserState.currentBranch with
-  | Some branch ->
-      ensureSelectionPathCanAcceptChildren branch.selectionPathSegments
+  | Some branch -> ensureSelectionPathCanAcceptChildren branch.parentPath
   | None -> raiseUsageError requiredMessage
 
-let resolvedSelectionPathSegmentsOfFieldPath parserState fieldPath =
+let resolvedFieldPath parserState fieldPath =
   match classifiedBranchPath fieldPath with
   | `Relative, bareFieldPath ->
-      currentBranchSegmentsOrRaise parserState
+      currentBranchPathOrRaise parserState
         ~requiredMessage:
           "Relative --field paths require an existing selection branch."
-      @ nonemptyFieldSegmentsOfPath bareFieldPath
-  | `Absolute, bareFieldPath -> nonemptyFieldSegmentsOfPath bareFieldPath
+      @ nonemptyFieldPathOfText bareFieldPath
+  | `Absolute, bareFieldPath -> nonemptyFieldPathOfText bareFieldPath
   | `Default, bareFieldPath ->
       parserState.currentDefaultSelectionPathPrefix
-      @ nonemptyFieldSegmentsOfPath bareFieldPath
+      @ nonemptyFieldPathOfText bareFieldPath
 
-let resolvedSelectionPathSegmentsOfFragment ~requiredMessage ~emptyMessage
-    segmentOfName parserState fragmentText =
-  let parentSegments, bareText =
+let resolvedFragmentPath ~requiredMessage ~emptyMessage selectionOfName
+    parserState fragmentText =
+  let parentPath, bareText =
     match classifiedBranchPath fragmentText with
     | `Relative, bareText ->
-        (currentBranchSegmentsOrRaise parserState ~requiredMessage, bareText)
+        (currentBranchPathOrRaise parserState ~requiredMessage, bareText)
     | `Absolute, bareText -> ([], bareText)
     | `Default, bareText -> (
         match parserState.currentBranch with
         | Some branch ->
-            ( ensureSelectionPathCanAcceptChildren branch.selectionPathSegments,
-              bareText )
+            (ensureSelectionPathCanAcceptChildren branch.parentPath, bareText)
         | None -> (parserState.currentDefaultSelectionPathPrefix, bareText))
   in
   let name = String.trim bareText in
 
   if name = "" then raiseUsageError emptyMessage
-  else parentSegments @ [ segmentOfName name ]
+  else parentPath @ [ selectionOfName name ]
 
-let resolvedSelectionPathSegmentsOfInlineFragment =
-  resolvedSelectionPathSegmentsOfFragment
+let resolvedInlineFragmentPath =
+  resolvedFragmentPath
     ~requiredMessage:
       "Relative --inline-fragment paths require an existing selection branch."
     ~emptyMessage:"Inline fragments require a type condition."
@@ -390,8 +384,8 @@ let resolvedSelectionPathSegmentsOfInlineFragment =
       GraphQlDocument.InlineFragment
         { typeCondition; directives = []; selectionSet = [] })
 
-let resolvedSelectionPathSegmentsOfFragmentSpread =
-  resolvedSelectionPathSegmentsOfFragment
+let resolvedFragmentSpreadPath =
+  resolvedFragmentPath
     ~requiredMessage:
       "Relative --fragment-spread paths require an existing selection branch."
     ~emptyMessage:"Fragment spreads require a fragment name." (fun name ->
@@ -476,15 +470,15 @@ let startedOperationDefinition parserState operationType operationName =
 let startedShorthandQueryOperation parserState firstFieldToken =
   let branch =
     {
-      selectionPathSegments = nonemptyFieldSegmentsOfPath firstFieldToken;
-      selectionPaths = [];
+      parentPath = nonemptyFieldPathOfText firstFieldToken;
+      leafSelectionPaths = [];
     }
   in
 
   {
     (startedOperationDefinition parserState Query None) with
     currentBranch = Some branch;
-    currentDefaultSelectionPathPrefix = branch.selectionPathSegments;
+    currentDefaultSelectionPathPrefix = branch.parentPath;
   }
 
 let initialParserState =
@@ -510,8 +504,8 @@ let operationHasSelections operation =
   operation.rootSelectionPaths <> [] || operation.selectionBranches <> []
 
 let branchHasCompleteInlineFragment branch =
-  match List.rev branch.selectionPathSegments with
-  | GraphQlDocument.InlineFragment _ :: _ -> branch.selectionPaths <> []
+  match List.rev branch.parentPath with
+  | GraphQlDocument.InlineFragment _ :: _ -> branch.leafSelectionPaths <> []
   | (GraphQlDocument.Field _ | GraphQlDocument.FragmentSpread _) :: _ -> true
   | [] -> false
 
@@ -573,26 +567,26 @@ let selectedVariables invocation =
            |> List.map (fun (name, value) ->
                (name, CliArgument.jsonLiteralOfValue value))))
 
-let replaceCurrentSelectionBranchWithSegments parserState resolvedSegments =
+let replaceCurrentBranchWithPath parserState resolvedPath =
   let rec extendsPath parent child =
     match (parent, child) with
     | [], _ :: _ -> true
-    | parentSegment :: parentTail, childSegment :: childTail
-      when parentSegment = childSegment ->
+    | parentSelection :: parentTail, childSelection :: childTail
+      when parentSelection = childSelection ->
         extendsPath parentTail childTail
     | _ -> false
   in
   let parserState =
     match parserState.currentBranch with
     | Some branch
-      when branch.selectionPaths = []
-           && extendsPath branch.selectionPathSegments resolvedSegments ->
+      when branch.leafSelectionPaths = []
+           && extendsPath branch.parentPath resolvedPath ->
         { parserState with currentBranch = None }
     | _ -> finalizedCurrentBranch parserState
   in
 
   withUpdatedCurrentSelectionBranch parserState
-    { selectionPathSegments = resolvedSegments; selectionPaths = [] }
+    { parentPath = resolvedPath; leafSelectionPaths = [] }
 
 let updateBranchOrFallback parserState ~onBranch ~onNoBranch =
   match parserState.currentBranch with
@@ -607,9 +601,8 @@ let handleOperation parserState operationHeaderText =
 
   startedOperationDefinition parserState operationType operationName
 
-let handleSelectionPath resolveSelectionPathSegments parserState pathText =
-  replaceCurrentSelectionBranchWithSegments parserState
-    (resolveSelectionPathSegments parserState pathText)
+let handleSelectionPath resolvePath parserState pathText =
+  replaceCurrentBranchWithPath parserState (resolvePath parserState pathText)
 
 let handleSelectionSet parserState expressionText =
   let selectionPaths = selectionPathsOfExpression expressionText in
@@ -691,12 +684,10 @@ let handleFieldArgument parserState (name, rawValue) =
 let optionHandlers =
   [
     ("operation", handleOperation);
-    ("field", handleSelectionPath resolvedSelectionPathSegmentsOfFieldPath);
-    ( "inline-fragment",
-      handleSelectionPath resolvedSelectionPathSegmentsOfInlineFragment );
-    ( "fragment-spread",
-      handleSelectionPath resolvedSelectionPathSegmentsOfFragmentSpread );
-    ("spread", handleSelectionPath resolvedSelectionPathSegmentsOfFragmentSpread);
+    ("field", handleSelectionPath resolvedFieldPath);
+    ("inline-fragment", handleSelectionPath resolvedInlineFragmentPath);
+    ("fragment-spread", handleSelectionPath resolvedFragmentSpreadPath);
+    ("spread", handleSelectionPath resolvedFragmentSpreadPath);
     ("selection-set", handleSelectionSet);
     ("fields", handleSelectionSet);
     ("operation-name", handleOperationName);
@@ -712,14 +703,14 @@ let handlePositionalToken parserState token =
   match parserState.currentBranch with
   | Some branch
     when parserState.currentDefaultSelectionPathPrefix = []
-         && branch.selectionPaths <> [] ->
+         && branch.leafSelectionPaths <> [] ->
       let finalizedParserState = finalizedCurrentBranch parserState in
 
-      replaceCurrentSelectionBranchWithSegments finalizedParserState
-        (resolvedSelectionPathSegmentsOfFieldPath finalizedParserState token)
+      replaceCurrentBranchWithPath finalizedParserState
+        (resolvedFieldPath finalizedParserState token)
   | Some branch ->
       withUpdatedCurrentSelectionBranch parserState
-        (withPushedFieldSelectionPathSegment branch token)
+        (withExtendedParentPath branch token)
   | None -> (
       match parserState.currentOperation with
       | None -> (
@@ -728,8 +719,8 @@ let handlePositionalToken parserState token =
               startedOperationDefinition parserState operationType None
           | None -> startedShorthandQueryOperation parserState token)
       | Some _ ->
-          replaceCurrentSelectionBranchWithSegments parserState
-            (resolvedSelectionPathSegmentsOfFieldPath parserState token))
+          replaceCurrentBranchWithPath parserState
+            (resolvedFieldPath parserState token))
 
 let rec parseRemainingArguments parserState = function
   | [] ->
