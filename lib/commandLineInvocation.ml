@@ -469,12 +469,12 @@ let withCurrentOperationOrRaise parserState ~missingMessage mapOperation =
 
 let withUpdatedCurrentSelectionBranch parserState branch =
   if parserState.currentOperation = None then
-    raiseUsageError "Selections require an operation context."
+    raiseUsageError "Selections require a current operation."
   else { parserState with currentBranch = Some branch }
 
 let withAddedRootSelectionPaths parserState selectionPaths =
   withCurrentOperationOrRaise parserState
-    ~missingMessage:"Selections require an operation context." (fun operation ->
+    ~missingMessage:"Selections require a current operation." (fun operation ->
       {
         operation with
         rootSelectionPaths = operation.rootSelectionPaths @ selectionPaths;
@@ -482,7 +482,7 @@ let withAddedRootSelectionPaths parserState selectionPaths =
 
 let withAddedOperationDirective parserState directiveText =
   withCurrentOperationOrRaise parserState
-    ~missingMessage:"Directives require an operation context." (fun operation ->
+    ~missingMessage:"Directives require a current operation." (fun operation ->
       {
         operation with
         operationDirectiveTexts =
