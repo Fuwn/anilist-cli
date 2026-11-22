@@ -181,11 +181,6 @@ let optionPairOfToken token remainingTokens =
       | [] | _ :: _ ->
           raiseUsageError (Printf.sprintf "Missing value for option %s" token))
 
-let valueOfOptionToken token remainingTokens =
-  let (_, optionValue), tail = optionPairOfToken token remainingTokens in
-
-  (optionValue, tail)
-
 let variableAssignmentOfText variableAssignmentText =
   match String.index_opt variableAssignmentText '=' with
   | Some equalsIndex when equalsIndex > 0 ->
@@ -768,11 +763,6 @@ let validatedInvocation invocation =
 
 exception HelpRequested
 
-let bareOptionNameOfToken token =
-  match optionNameAndValueOfEqualsSyntax token with
-  | Some (optionName, _) -> optionName
-  | None -> String.sub token 2 (String.length token - 2)
-
 let replaceCurrentSelectionBranchWithSegments parserState resolvedSegments =
   let rec extendsPath parent child =
     match (parent, child) with
@@ -955,20 +945,13 @@ let rec parseRemainingArguments parserState = function
   | [] -> currentInvocationOfState parserState
   | "--help" :: _ -> raise HelpRequested
   | token :: remainingTokens when isLongOption token ->
-      let updatedParserState, remainingTokens =
-        match List.assoc_opt (bareOptionNameOfToken token) optionHandlers with
-        | Some handler ->
-            let optionValue, remainingTokens =
-              valueOfOptionToken token remainingTokens
-            in
-
-            (handler parserState optionValue, remainingTokens)
-        | None ->
-            let fieldArgumentPair, remainingTokens =
-              optionPairOfToken token remainingTokens
-            in
-
-            (handleFieldArgument parserState fieldArgumentPair, remainingTokens)
+      let (optionName, optionValue), remainingTokens =
+        optionPairOfToken token remainingTokens
+      in
+      let updatedParserState =
+        match List.assoc_opt optionName optionHandlers with
+        | Some handler -> handler parserState optionValue
+        | None -> handleFieldArgument parserState (optionName, optionValue)
       in
 
       parseRemainingArguments updatedParserState remainingTokens
