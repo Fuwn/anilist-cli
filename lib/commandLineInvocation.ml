@@ -134,21 +134,6 @@ let usageText =
 
 let withUsageText message = message ^ "\n\n" ^ usageText
 let raiseUsageError message = invalid_arg (withUsageText message)
-let selectionSetOptionName = "selection-set"
-let compatibilitySelectionSetOptionName = "fields"
-let fieldOptionName = "field"
-let inlineFragmentOptionName = "inline-fragment"
-let fragmentSpreadOptionName = "fragment-spread"
-let fragmentSpreadCompatibilityOptionName = "spread"
-let fragmentOptionName = "fragment"
-let operationOptionName = "operation"
-let operationNameOptionName = "operation-name"
-let selectedOperationNameOptionName = "execute-operation-name"
-let variableDefinitionOptionName = "variable-definition"
-let variableOptionName = "variable"
-let directiveOptionName = "directive"
-let aliasOptionName = "alias"
-let fragmentDefinitionOptionName = "fragment-definition"
 let currentBranchPathPrefix = "./"
 let absoluteBranchPathPrefix = "/"
 let isLongOption token = String.length token > 2 && String.sub token 0 2 = "--"
@@ -958,25 +943,23 @@ let handleFieldArgument parserState (name, rawValue) =
 
 let optionHandlers =
   [
-    (operationOptionName, handleOperation);
-    ( fieldOptionName,
-      handleSelectionPath resolvedSelectionPathSegmentsOfFieldPath );
-    ( inlineFragmentOptionName,
+    ("operation", handleOperation);
+    ("field", handleSelectionPath resolvedSelectionPathSegmentsOfFieldPath);
+    ( "inline-fragment",
       handleSelectionPath resolvedSelectionPathSegmentsOfInlineFragment );
-    ( fragmentSpreadOptionName,
+    ( "fragment-spread",
       handleSelectionPath resolvedSelectionPathSegmentsOfFragmentSpread );
-    ( fragmentSpreadCompatibilityOptionName,
-      handleSelectionPath resolvedSelectionPathSegmentsOfFragmentSpread );
-    (fragmentOptionName, handleFragment);
-    (selectionSetOptionName, handleSelectionSet);
-    (compatibilitySelectionSetOptionName, handleSelectionSet);
-    (operationNameOptionName, handleOperationName);
-    (selectedOperationNameOptionName, handleSelectedOperationName);
-    (variableDefinitionOptionName, handleVariableDefinition);
-    (variableOptionName, handleVariable);
-    (directiveOptionName, handleDirective);
-    (aliasOptionName, handleAlias);
-    (fragmentDefinitionOptionName, handleFragmentDefinition);
+    ("spread", handleSelectionPath resolvedSelectionPathSegmentsOfFragmentSpread);
+    ("fragment", handleFragment);
+    ("selection-set", handleSelectionSet);
+    ("fields", handleSelectionSet);
+    ("operation-name", handleOperationName);
+    ("execute-operation-name", handleSelectedOperationName);
+    ("variable-definition", handleVariableDefinition);
+    ("variable", handleVariable);
+    ("directive", handleDirective);
+    ("alias", handleAlias);
+    ("fragment-definition", handleFragmentDefinition);
   ]
 
 let handlePositionalToken parserState token =
