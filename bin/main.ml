@@ -62,7 +62,7 @@ let () =
   | Error message -> printAndExit stderr 1 message
   | Ok requestOptions -> (
       match
-        SchemaArgumentParser.invocationOfArguments
+        SchemaCommand.ofArguments
           requestOptions.RequestOptions.remainingArguments
       with
       | Ok (Some schemaCommand) ->
@@ -78,7 +78,7 @@ let () =
                     printResponse statusCode responseBody)))
       | Error message ->
           if
-            SchemaArgumentParser.helpRequestedOfArguments
+            SchemaCommand.helpRequestedOfArguments
               requestOptions.RequestOptions.remainingArguments
           then printAndExit stdout 0 message
           else printAndExit stderr 1 message

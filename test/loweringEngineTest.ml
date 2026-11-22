@@ -731,89 +731,77 @@ let testMultipleOperationParsing () =
   | Error message -> failwith message
 
 let testSchemaCommandParsing () =
-  match SchemaArgumentParser.invocationOfArguments [ "schema" ] with
+  match SchemaCommand.ofArguments [ "schema" ] with
   | Ok (Some schemaCommand) ->
       assertEqual "IntrospectionQuery"
-        (Option.get schemaCommand.SchemaCommandTypes.operationName);
+        (Option.get schemaCommand.SchemaCommand.operationName);
       assertEqual "0"
         (string_of_int
-           (match schemaCommand.SchemaCommandTypes.variables with
+           (match schemaCommand.SchemaCommand.variables with
            | Some _ -> 1
            | None -> 0));
       assertEqual "0"
         (string_of_int
-           (match schemaCommand.SchemaCommandTypes.requestedDirectiveName with
+           (match schemaCommand.SchemaCommand.requestedDirectiveName with
            | Some _ -> 1
            | None -> 0));
-      assertContainsSubstring "__schema"
-        schemaCommand.SchemaCommandTypes.queryText;
+      assertContainsSubstring "__schema" schemaCommand.SchemaCommand.queryText;
       assertContainsSubstring "fragment FullType"
-        schemaCommand.SchemaCommandTypes.queryText
+        schemaCommand.SchemaCommand.queryText
   | Ok None -> failwith "Expected schema command"
   | Error message -> failwith message
 
 let testSchemaTypeCommandParsing () =
-  match
-    SchemaArgumentParser.invocationOfArguments [ "schema"; "--type"; "Media" ]
-  with
+  match SchemaCommand.ofArguments [ "schema"; "--type"; "Media" ] with
   | Ok (Some schemaCommand) ->
       assertEqual "IntrospectionTypeQuery"
-        (Option.get schemaCommand.SchemaCommandTypes.operationName);
+        (Option.get schemaCommand.SchemaCommand.operationName);
       assertContainsSubstring "__type(name: $name)"
-        schemaCommand.SchemaCommandTypes.queryText;
+        schemaCommand.SchemaCommand.queryText;
       assertEqual "0"
         (string_of_int
-           (match schemaCommand.SchemaCommandTypes.requestedDirectiveName with
+           (match schemaCommand.SchemaCommand.requestedDirectiveName with
            | Some _ -> 1
            | None -> 0));
       assertEqual "{\"name\":\"Media\"}"
-        (schemaCommand.SchemaCommandTypes.variables |> Option.get
+        (schemaCommand.SchemaCommand.variables |> Option.get
        |> Yojson.Safe.to_string)
   | Ok None -> failwith "Expected schema type command"
   | Error message -> failwith message
 
 let testSchemaDirectiveCommandParsing () =
-  match
-    SchemaArgumentParser.invocationOfArguments
-      [ "schema"; "--directive"; "include" ]
-  with
+  match SchemaCommand.ofArguments [ "schema"; "--directive"; "include" ] with
   | Ok (Some schemaCommand) ->
       assertEqual "IntrospectionDirectiveQuery"
-        (Option.get schemaCommand.SchemaCommandTypes.operationName);
-      assertContainsSubstring "directives"
-        schemaCommand.SchemaCommandTypes.queryText;
+        (Option.get schemaCommand.SchemaCommand.operationName);
+      assertContainsSubstring "directives" schemaCommand.SchemaCommand.queryText;
       assertEqual "include"
-        (Option.get schemaCommand.SchemaCommandTypes.requestedDirectiveName);
+        (Option.get schemaCommand.SchemaCommand.requestedDirectiveName);
       assertEqual "0"
         (string_of_int
-           (match schemaCommand.SchemaCommandTypes.variables with
+           (match schemaCommand.SchemaCommand.variables with
            | Some _ -> 1
            | None -> 0))
   | Ok None -> failwith "Expected schema directive command"
   | Error message -> failwith message
 
 let testSchemaEqualsOptionParsing () =
-  (match
-     SchemaArgumentParser.invocationOfArguments [ "schema"; "--type=Media" ]
-   with
+  (match SchemaCommand.ofArguments [ "schema"; "--type=Media" ] with
   | Ok (Some schemaCommand) ->
       assertEqual "IntrospectionTypeQuery"
-        (Option.get schemaCommand.SchemaCommandTypes.operationName)
+        (Option.get schemaCommand.SchemaCommand.operationName)
   | Ok None -> failwith "Expected schema type command"
   | Error message -> failwith message);
-  match
-    SchemaArgumentParser.invocationOfArguments
-      [ "schema"; "--directive=include" ]
-  with
+  match SchemaCommand.ofArguments [ "schema"; "--directive=include" ] with
   | Ok (Some schemaCommand) ->
       assertEqual "IntrospectionDirectiveQuery"
-        (Option.get schemaCommand.SchemaCommandTypes.operationName)
+        (Option.get schemaCommand.SchemaCommand.operationName)
   | Ok None -> failwith "Expected schema directive command"
   | Error message -> failwith message
 
 let testSchemaCommandRejectsConflictingOptions () =
   match
-    SchemaArgumentParser.invocationOfArguments
+    SchemaCommand.ofArguments
       [ "schema"; "--type"; "Media"; "--directive"; "include" ]
   with
   | Ok _ -> failwith "Expected schema command rejection"
@@ -821,8 +809,7 @@ let testSchemaCommandRejectsConflictingOptions () =
 
 let testSchemaCommandRejectsMissingOptionValues () =
   match
-    SchemaArgumentParser.invocationOfArguments
-      [ "schema"; "--type"; "--directive"; "include" ]
+    SchemaCommand.ofArguments [ "schema"; "--type"; "--directive"; "include" ]
   with
   | Ok _ -> failwith "Expected missing type value rejection"
   | Error message ->
@@ -867,14 +854,14 @@ let testRequestHeaderExtractionRejectsMissingHeaderValue () =
       assertContainsSubstring "Missing value for option --header." message
 
 let testSchemaHelpDetection () =
-  if not (SchemaArgumentParser.helpRequestedOfArguments [ "schema"; "--help" ])
-  then failwith "Expected schema help detection";
+  if not (SchemaCommand.helpRequestedOfArguments [ "schema"; "--help" ]) then
+    failwith "Expected schema help detection";
 
-  if not (SchemaArgumentParser.helpRequestedOfArguments [ "schema"; "help" ])
-  then failwith "Expected schema bare help detection";
+  if not (SchemaCommand.helpRequestedOfArguments [ "schema"; "help" ]) then
+    failwith "Expected schema bare help detection";
 
-  if SchemaArgumentParser.helpRequestedOfArguments [ "schema"; "nope"; "help" ]
-  then failwith "Unexpected schema malformed help detection"
+  if SchemaCommand.helpRequestedOfArguments [ "schema"; "nope"; "help" ] then
+    failwith "Unexpected schema malformed help detection"
 
 let () =
   testSingleFieldSelectionShorthand ();

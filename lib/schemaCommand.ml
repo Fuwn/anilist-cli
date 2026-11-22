@@ -1,5 +1,132 @@
 open Lwt.Infix
 
+type t = {
+  operationName : string option;
+  queryText : string;
+  variables : Yojson.Safe.t option;
+  requestedDirectiveName : string option;
+}
+
+let fullSchemaCommand =
+  {
+    operationName = Some "IntrospectionQuery";
+    queryText = String.trim SchemaQueries.fullSchemaQueryText;
+    variables = None;
+    requestedDirectiveName = None;
+  }
+
+let typeCommand typeName =
+  {
+    operationName = Some "IntrospectionTypeQuery";
+    queryText = String.trim SchemaQueries.typeQueryText;
+    variables = Some (`Assoc [ ("name", `String typeName) ]);
+    requestedDirectiveName = None;
+  }
+
+let directiveCommand directiveName =
+  {
+    operationName = Some "IntrospectionDirectiveQuery";
+    queryText = String.trim SchemaQueries.directiveQueryText;
+    variables = None;
+    requestedDirectiveName = Some directiveName;
+  }
+
+type parsedArguments = {
+  typeName : string option;
+  directiveName : string option;
+}
+
+let usageText =
+  String.concat "\n"
+    [
+      "Usage:";
+      "  anilist schema";
+      "  anilist schema --type <Type>";
+      "  anilist schema --directive <Directive>";
+      "  anilist ... --header 'Authorization: Bearer <token>'";
+      "";
+      "Examples:";
+      "  anilist schema";
+      "  anilist schema --type Media";
+      "  anilist schema --directive include";
+    ]
+
+let helpRequestedOfArguments = function
+  | [ "schema"; "--help" ] | [ "schema"; "help" ] -> true
+  | _ -> false
+
+let missingValueError optionName =
+  Error
+    (Printf.sprintf "Schema --%s requires a value.\n\n%s" optionName usageText)
+
+let setOption optionName value current =
+  if String.starts_with ~prefix:"--" value then missingValueError optionName
+  else
+    match current with
+    | None -> Ok (Some value)
+    | Some _ ->
+        Error
+          (Printf.sprintf "Schema command accepts at most one --%s option."
+             optionName)
+
+let ( let* ) = Result.bind
+
+let parseArguments arguments =
+  let rec loop accumulated = function
+    | [] -> Ok accumulated
+    | "--type" :: [] -> missingValueError "type"
+    | "--directive" :: [] -> missingValueError "directive"
+    | "--type" :: value :: rest ->
+        let* typeName = setOption "type" value accumulated.typeName in
+        loop { accumulated with typeName } rest
+    | "--directive" :: value :: rest ->
+        let* directiveName =
+          setOption "directive" value accumulated.directiveName
+        in
+        loop { accumulated with directiveName } rest
+    | argument :: rest -> (
+        match
+          ( StringPrefix.valueWithoutPrefix ~prefix:"--type=" argument,
+            StringPrefix.valueWithoutPrefix ~prefix:"--directive=" argument )
+        with
+        | Some value, _ -> loop accumulated ("--type" :: value :: rest)
+        | None, Some value -> loop accumulated ("--directive" :: value :: rest)
+        | None, None ->
+            Error
+              (Printf.sprintf "Invalid schema argument: %s\n\n%s" argument
+                 usageText))
+  in
+  loop { typeName = None; directiveName = None } arguments
+
+let commandOfParsedArguments = function
+  | { typeName = Some _; directiveName = Some _ } ->
+      Error
+        (Printf.sprintf
+           "Schema command accepts only one of --type or --directive.\n\n%s"
+           usageText)
+  | { typeName = Some ""; directiveName = None } ->
+      Error
+        (Printf.sprintf "Schema --type requires a non-empty type name.\n\n%s"
+           usageText)
+  | { typeName = Some name; directiveName = None } ->
+      Ok (Some (typeCommand name))
+  | { typeName = None; directiveName = Some "" } ->
+      Error
+        (Printf.sprintf
+           "Schema --directive requires a non-empty directive name.\n\n%s"
+           usageText)
+  | { typeName = None; directiveName = Some name } ->
+      Ok (Some (directiveCommand name))
+  | { typeName = None; directiveName = None } ->
+      Error (Printf.sprintf "Invalid schema command.\n\n%s" usageText)
+
+let ofArguments = function
+  | [ "schema" ] -> Ok (Some fullSchemaCommand)
+  | "schema" :: [ "--help" ] | "schema" :: [ "help" ] -> Error usageText
+  | "schema" :: schemaArguments ->
+      Result.bind (parseArguments schemaArguments) commandOfParsedArguments
+  | _ -> Ok None
+
 let filterDirectiveResponse ~directiveName responseBody =
   let replaceField name value fields =
     List.map
@@ -32,13 +159,12 @@ let filterDirectiveResponse ~directiveName responseBody =
       |> Yojson.Safe.pretty_to_string
   with Yojson.Json_error _ | Yojson.Safe.Util.Type_error _ -> responseBody
 
-let execute ~headers ~endpoint (schemaCommand : SchemaCommandTypes.t) =
-  GraphQlTransport.executeQuery
-    ~operationName:schemaCommand.SchemaCommandTypes.operationName
-    ~variables:schemaCommand.SchemaCommandTypes.variables ~headers ~endpoint
-    ~query:schemaCommand.SchemaCommandTypes.queryText
+let execute ~headers ~endpoint schemaCommand =
+  GraphQlTransport.executeQuery ~operationName:schemaCommand.operationName
+    ~variables:schemaCommand.variables ~headers ~endpoint
+    ~query:schemaCommand.queryText
   >|= fun (statusCode, responseBody) ->
-  match schemaCommand.SchemaCommandTypes.requestedDirectiveName with
+  match schemaCommand.requestedDirectiveName with
   | Some directiveName when statusCode >= 200 && statusCode < 300 ->
       (statusCode, filterDirectiveResponse ~directiveName responseBody)
   | Some _ | None -> (statusCode, responseBody)

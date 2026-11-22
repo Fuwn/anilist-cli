@@ -9,9 +9,7 @@
   graphQlName
   loweringEngine
   requestOptions
-  schemaArgumentParser
   schemaCommand
-  schemaCommandTypes
   schemaQueries
   stringPrefix)
  (private_modules schemaQueries stringPrefix)
