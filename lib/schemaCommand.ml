@@ -1,35 +1,15 @@
 open Lwt.Infix
 
-type t = {
-  operationName : string option;
-  queryText : string;
-  variables : Yojson.Safe.t option;
-  requestedDirectiveName : string option;
-}
+type t = FullSchema | Type of string | Directive of string
 
-let fullSchemaCommand =
-  {
-    operationName = Some "IntrospectionQuery";
-    queryText = SchemaQueries.fullSchemaQueryText;
-    variables = None;
-    requestedDirectiveName = None;
-  }
-
-let typeCommand typeName =
-  {
-    operationName = Some "IntrospectionTypeQuery";
-    queryText = SchemaQueries.typeQueryText;
-    variables = Some (`Assoc [ ("name", `String typeName) ]);
-    requestedDirectiveName = None;
-  }
-
-let directiveCommand directiveName =
-  {
-    operationName = Some "IntrospectionDirectiveQuery";
-    queryText = SchemaQueries.directiveQueryText;
-    variables = None;
-    requestedDirectiveName = Some directiveName;
-  }
+let operationNameQueryTextAndVariables = function
+  | FullSchema -> ("IntrospectionQuery", SchemaQueries.fullSchemaQueryText, None)
+  | Type typeName ->
+      ( "IntrospectionTypeQuery",
+        SchemaQueries.typeQueryText,
+        Some (`Assoc [ ("name", `String typeName) ]) )
+  | Directive _ ->
+      ("IntrospectionDirectiveQuery", SchemaQueries.directiveQueryText, None)
 
 type parsedArguments = {
   typeName : string option;
@@ -104,20 +84,17 @@ let commandOfParsedArguments = function
       Error
         (Printf.sprintf "Schema --type requires a non-empty type name.\n\n%s"
            usageText)
-  | { typeName = Some name; directiveName = None } ->
-      Ok (`Command (typeCommand name))
+  | { typeName = Some name; directiveName = None } -> Ok (`Command (Type name))
   | { typeName = None; directiveName = Some "" } ->
       Error
         (Printf.sprintf
            "Schema --directive requires a non-empty directive name.\n\n%s"
            usageText)
   | { typeName = None; directiveName = Some name } ->
-      Ok (`Command (directiveCommand name))
-  | { typeName = None; directiveName = None } ->
-      Error (Printf.sprintf "Invalid schema command.\n\n%s" usageText)
+      Ok (`Command (Directive name))
+  | { typeName = None; directiveName = None } -> Ok (`Command FullSchema)
 
 let ofArguments = function
-  | [ "schema" ] -> Ok (`Command fullSchemaCommand)
   | [ "schema"; ("--help" | "help") ] -> Ok `Help
   | "schema" :: schemaArguments ->
       Result.bind (parseArguments schemaArguments) commandOfParsedArguments
@@ -156,10 +133,14 @@ let filterDirectiveResponse ~directiveName responseBody =
   with Yojson.Json_error _ | Yojson.Safe.Util.Type_error _ -> responseBody
 
 let execute ~headers schemaCommand =
-  GraphQlTransport.executeQuery ~operationName:schemaCommand.operationName
-    ~variables:schemaCommand.variables ~headers ~query:schemaCommand.queryText
+  let operationName, query, variables =
+    operationNameQueryTextAndVariables schemaCommand
+  in
+
+  GraphQlTransport.executeQuery ~operationName:(Some operationName) ~variables
+    ~headers ~query
   >|= fun (statusCode, responseBody) ->
-  match schemaCommand.requestedDirectiveName with
-  | Some directiveName when statusCode >= 200 && statusCode < 300 ->
+  match schemaCommand with
+  | Directive directiveName when statusCode >= 200 && statusCode < 300 ->
       (statusCode, filterDirectiveResponse ~directiveName responseBody)
-  | Some _ | None -> (statusCode, responseBody)
+  | FullSchema | Type _ | Directive _ -> (statusCode, responseBody)

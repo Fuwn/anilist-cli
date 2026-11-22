@@ -281,13 +281,13 @@ let testInvocations () =
 
 let testSchemaCommands () =
   [
-    ("schema", Ok (`Command SchemaCommand.fullSchemaCommand));
-    ("schema --type Media", Ok (`Command (SchemaCommand.typeCommand "Media")));
-    ("schema --type=Media", Ok (`Command (SchemaCommand.typeCommand "Media")));
+    ("schema", Ok (`Command SchemaCommand.FullSchema));
+    ("schema --type Media", Ok (`Command (SchemaCommand.Type "Media")));
+    ("schema --type=Media", Ok (`Command (SchemaCommand.Type "Media")));
     ( "schema --directive include",
-      Ok (`Command (SchemaCommand.directiveCommand "include")) );
+      Ok (`Command (SchemaCommand.Directive "include")) );
     ( "schema --directive=include",
-      Ok (`Command (SchemaCommand.directiveCommand "include")) );
+      Ok (`Command (SchemaCommand.Directive "include")) );
     ("schema --help", Ok `Help);
     ("schema help", Ok `Help);
     ("media --selection-set id", Ok `NotSchemaCommand);
