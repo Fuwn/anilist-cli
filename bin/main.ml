@@ -37,8 +37,7 @@ let run ~headers invocation =
   runProtected (fun () ->
       let loweredRequest = LoweringEngine.lower invocation in
       let query =
-        loweredRequest |> LoweringEngine.graphQlQueryOfRequest
-        |> GraphQlQuery.render
+        GraphQlDocument.render loweredRequest.LoweringEngine.document
       in
       let variables =
         match loweredRequest.LoweringEngine.loweredVariableAssignments with

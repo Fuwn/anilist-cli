@@ -105,7 +105,7 @@ let invocationOfOperations ?selectedOperationName
   }
 
 let queryOfLoweredRequest loweredRequest =
-  loweredRequest |> LoweringEngine.graphQlQueryOfRequest |> GraphQlQuery.render
+  GraphQlDocument.render loweredRequest.LoweringEngine.document
 
 let testSingleFieldSelectionShorthand () =
   let request =

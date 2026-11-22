@@ -1,8 +1,8 @@
 open CommandLineInvocation
 
 type scopedFieldSelection = {
-  relativeSelectionSet : GraphQlSelection.t list;
-  rootSelectionSet : GraphQlSelection.t list;
+  relativeSelectionSet : GraphQlDocument.selection list;
+  rootSelectionSet : GraphQlDocument.selection list;
 }
 
 let graphQlArgumentsOfOptionPairs optionPairs =
@@ -35,39 +35,37 @@ let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
   | [] ->
       raise (Invalid_argument "Expected at least one selection path segment")
   | FieldSegment
-      ({ fieldName; fieldAlias; fieldArgumentPairs; fieldDirectiveTexts } :
-        fieldSegment)
+      { fieldName; fieldAlias; fieldArgumentPairs; fieldDirectiveTexts }
     :: remainingSelectionPathSegments ->
-      GraphQlSelection.field
-        (GraphQlSelection.makeField ?alias:fieldAlias
-           ~name:(graphQlFieldNameOfSegment ~isTargetRoot fieldName)
-           ~arguments:(graphQlArgumentsOfOptionPairs fieldArgumentPairs)
-           ~directives:fieldDirectiveTexts
-           ~selectionSet:
-             (lowerTail ~isTargetRoot:false remainingSelectionPathSegments)
-           ())
+      GraphQlDocument.Field
+        {
+          alias = fieldAlias;
+          name = graphQlFieldNameOfSegment ~isTargetRoot fieldName;
+          arguments = graphQlArgumentsOfOptionPairs fieldArgumentPairs;
+          directives = fieldDirectiveTexts;
+          selectionSet =
+            lowerTail ~isTargetRoot:false remainingSelectionPathSegments;
+        }
   | InlineFragmentSegment
-      ({ inlineFragmentTypeCondition; inlineFragmentDirectiveTexts } :
-        inlineFragmentSegment)
+      { inlineFragmentTypeCondition; inlineFragmentDirectiveTexts }
     :: remainingSelectionPathSegments ->
-      GraphQlSelection.inlineFragment
-        (GraphQlSelection.makeInlineFragment
-           ~typeCondition:(graphQlTypeCondition inlineFragmentTypeCondition)
-           ~directives:inlineFragmentDirectiveTexts
-           ~selectionSet:
-             (lowerTail ~isTargetRoot remainingSelectionPathSegments)
-           ())
-  | FragmentSpreadSegment
-      ({ fragmentSpreadName; fragmentSpreadDirectiveTexts } :
-        fragmentSpreadSegment)
+      GraphQlDocument.InlineFragment
+        {
+          typeCondition = graphQlTypeCondition inlineFragmentTypeCondition;
+          directives = inlineFragmentDirectiveTexts;
+          selectionSet = lowerTail ~isTargetRoot remainingSelectionPathSegments;
+        }
+  | FragmentSpreadSegment { fragmentSpreadName; fragmentSpreadDirectiveTexts }
     :: remainingSelectionPathSegments ->
       if remainingSelectionPathSegments <> [] then
         raise
           (Invalid_argument "Fragment spreads cannot contain child selections")
       else
-        GraphQlSelection.fragmentSpread
-          (GraphQlSelection.makeFragmentSpread ~name:fragmentSpreadName
-             ~directives:fragmentSpreadDirectiveTexts ())
+        GraphQlDocument.FragmentSpread
+          {
+            name = fragmentSpreadName;
+            directives = fragmentSpreadDirectiveTexts;
+          }
 
 let selectionsOfScopedPaths ~capitalizeRootFieldNames scopedPaths =
   scopedPaths
@@ -90,10 +88,9 @@ let scopedSelectionOfPaths ?(capitalizeRelativeRootFieldNames = false)
   }
 
 type request = {
-  operations : GraphQlOperation.t list;
+  document : GraphQlDocument.t;
   selectedOperationName : string option;
   loweredVariableAssignments : (string * CliArgument.value) list;
-  fragmentDefinitions : GraphQlFragmentDefinition.t list;
 }
 
 let lowerSelectionBranch ~capitalizeRootFieldNames ~isTargetRoot selectionBranch
@@ -142,9 +139,13 @@ let lowerStructuredFragmentDefinition
     selectionSetOfBody ~capitalizeRootFieldNames:false fragmentBody
   in
 
-  GraphQlFragmentDefinition.make ~name:fragmentName
-    ~typeCondition:(graphQlTypeCondition fragmentTypeCondition)
-    ~directives:fragmentBody.directiveTexts ~selectionSet ()
+  GraphQlDocument.Structured
+    {
+      name = fragmentName;
+      typeCondition = graphQlTypeCondition fragmentTypeCondition;
+      directives = fragmentBody.directiveTexts;
+      selectionSet;
+    }
 
 let lowerOperationDefinition
     {
@@ -158,8 +159,13 @@ let lowerOperationDefinition
     selectionSetOfBody ~capitalizeRootFieldNames:true operationBody
   in
   let operation =
-    GraphQlOperation.make ?name:operationName ~variableDefinitions
-      ~directives:operationBody.directiveTexts ~operationType ~selectionSet ()
+    {
+      GraphQlDocument.operationType;
+      name = operationName;
+      variableDefinitions;
+      directives = operationBody.directiveTexts;
+      selectionSet;
+    }
   in
 
   (operation, variableAssignments)
@@ -171,7 +177,7 @@ let selectedOperationAndVariables operations selectedOperationName =
       let _, variableAssignments =
         operations
         |> List.find (fun (operation, _) ->
-            operation.GraphQlOperation.name = Some selectedOperationName)
+            operation.GraphQlDocument.name = Some selectedOperationName)
       in
 
       (Some selectedOperationName, variableAssignments)
@@ -192,16 +198,15 @@ let lower (invocation : CommandLineInvocation.t) =
     (invocation.structuredFragmentDefinitions
     |> List.map lowerStructuredFragmentDefinition)
     @ (invocation.rawFragmentDefinitionTexts
-      |> List.map GraphQlFragmentDefinition.makeRaw)
+      |> List.map GraphQlDocument.rawFragmentDefinition)
   in
 
   {
-    operations = loweredOperations |> List.map fst;
+    document =
+      {
+        GraphQlDocument.operations = loweredOperations |> List.map fst;
+        fragmentDefinitions;
+      };
     selectedOperationName;
     loweredVariableAssignments;
-    fragmentDefinitions;
   }
-
-let graphQlQueryOfRequest request =
-  GraphQlQuery.make ~operations:request.operations
-    ~fragmentDefinitions:request.fragmentDefinitions ()

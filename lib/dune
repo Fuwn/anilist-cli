@@ -4,12 +4,9 @@
  (modules
   cliArgument
   commandLineInvocation
-  graphQlFragmentDefinition
-  graphQlOperation
-  graphQlSelection
+  graphQlDocument
   graphQlTransport
   graphQlName
-  graphQlQuery
   loweringEngine
   requestOptions
   schemaArgumentParser

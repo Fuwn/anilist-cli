@@ -1,4 +1,4 @@
-type operationType = GraphQlOperation.operationType =
+type operationType = GraphQlDocument.operationType =
   | Query
   | Mutation
   | Subscription
@@ -844,7 +844,7 @@ let handleVariable parserState variableAssignmentText =
       })
 
 let handleDirective parserState directiveText =
-  let directiveText = GraphQlSelection.renderDirectiveText directiveText in
+  let directiveText = GraphQlDocument.renderDirectiveText directiveText in
 
   updateBranchOrFallback parserState
     ~onBranch:(fun branch -> withAddedBranchDirective branch directiveText)
