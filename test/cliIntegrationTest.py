@@ -294,6 +294,36 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertIn("requires a current operation", result.stderr)
         self.assertEqual(self.requests, [])
 
+    def test_selection_without_operation_is_local_error(self):
+        result = self.run_cli(
+            "--fragment-definition",
+            "fragment core on Media { id }",
+            "--selection-set",
+            "id",
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Selections require a current operation", result.stderr)
+        self.assertEqual(self.requests, [])
+
+    def test_removed_fragment_option_is_a_field_argument(self):
+        self.assert_query(
+            ["media", "--fragment", "core:Media", "--selection-set", "id"],
+            'query {\n  Media(fragment: "core:Media") {\n    id\n  }\n}',
+        )
+
+    def test_removed_root_scope_is_an_alias(self):
+        self.assert_query(
+            ["media", "--selection-set", "root:id"],
+            "query {\n  Media {\n    root: id\n  }\n}",
+        )
+
+    def test_removed_slash_scope_is_part_of_the_field_name(self):
+        self.assert_query(
+            ["media", "--selection-set", "/id"],
+            "query {\n  Media {\n    /id\n  }\n}",
+        )
+
     def test_schema_filters_only_directives(self):
         self.response = {
             "data": {

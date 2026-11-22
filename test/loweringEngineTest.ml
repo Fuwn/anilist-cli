@@ -364,9 +364,13 @@ let testSelectionSetCompatibilityAliasParsing () =
         List.hd invocation.CommandLineInvocation.operationDefinitions
       in
 
+      let selectionBranch =
+        List.hd (selectionBranchesOfOperation operationDefinition)
+      in
+
       assertEqual "1"
         (string_of_int
-           (List.length (selectionBranchesOfOperation operationDefinition)))
+           (List.length selectionBranch.CommandLineInvocation.selectionPaths))
   | Error message -> failwith message
 
 let testOperationParsing () =
@@ -461,21 +465,15 @@ let testVariableAssignmentsRejectVariableReferences () =
   | Ok _ -> failwith "Expected variable assignment rejection"
   | Error _ -> ()
 
-let testInlineFragmentsRequireSelections () =
-  try
-    ignore
-      (LoweringEngine.lower
-         (invocationOfOperations
-            [
-              operationDefinition []
-                [
-                  selectionBranch
-                    [ fieldSegment "media" [ ("id", "1") ] ]
-                    [ "...on:Media" ];
-                ];
-            ]));
-    failwith "Expected inline fragment validation failure"
-  with Invalid_argument _ -> ()
+let testInlineFragmentShorthandRequiresSelections () =
+  match
+    invocationOfArguments
+      [ "media"; "--id"; "1"; "--selection-set"; "...on:Media" ]
+  with
+  | Ok _ -> failwith "Expected inline fragment shorthand rejection"
+  | Error message ->
+      assertContainsSubstring
+        "Inline fragments require a type condition and selection set" message
 
 let testRelativeAndAbsoluteFieldPathParsing () =
   match
@@ -816,7 +814,7 @@ let () =
   testOperationParsing ();
   testVariableAssignmentsPreserveGraphQlVariableNames ();
   testVariableAssignmentsRejectVariableReferences ();
-  testInlineFragmentsRequireSelections ();
+  testInlineFragmentShorthandRequiresSelections ();
   testRelativeAndAbsoluteFieldPathParsing ();
   testExplicitOperationBarePositionalSiblingFields ();
   testInlineFragmentParsing ();
