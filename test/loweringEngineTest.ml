@@ -80,11 +80,11 @@ let selectionBranchesOfOperation operationDefinition =
   operationDefinition.CommandLineInvocation.selectionBranches
 
 let invocationOfOperations ?selectedOperationName
-    ?(rawFragmentDefinitionTexts = []) operationDefinitions =
+    ?(fragmentDefinitionTexts = []) operationDefinitions =
   {
     CommandLineInvocation.operationDefinitions;
     selectedOperationName;
-    rawFragmentDefinitionTexts;
+    fragmentDefinitionTexts;
   }
 
 let queryOfLoweredRequest loweredRequest =
@@ -268,7 +268,7 @@ let testFragmentSpreadDirectiveLowering () =
   let request =
     LoweringEngine.lower
       (invocationOfOperations
-         ~rawFragmentDefinitionTexts:
+         ~fragmentDefinitionTexts:
            [ "fragment mediaCore on Media { popularity }" ]
          [
            operationDefinition []
@@ -298,7 +298,7 @@ let testRawFragmentDefinitionsKeepTheirOrder () =
   let request =
     LoweringEngine.lower
       (invocationOfOperations
-         ~rawFragmentDefinitionTexts:
+         ~fragmentDefinitionTexts:
            [
              "fragment mediaCore on Media { popularity }";
              "fragment legacyFragment on Media { favourites }";
@@ -414,8 +414,7 @@ let testOperationParsing () =
            (List.length (selectionBranchesOfOperation operationDefinition)));
       assertEqual "1"
         (string_of_int
-           (List.length
-              invocation.CommandLineInvocation.rawFragmentDefinitionTexts))
+           (List.length invocation.CommandLineInvocation.fragmentDefinitionTexts))
   | Error message -> failwith message
 
 let testVariableAssignmentsPreserveGraphQlVariableNames () =

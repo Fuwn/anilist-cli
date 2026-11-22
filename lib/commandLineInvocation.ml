@@ -43,7 +43,7 @@ type operationDefinition = {
 type t = {
   operationDefinitions : operationDefinition list;
   selectedOperationName : string option;
-  rawFragmentDefinitionTexts : string list;
+  fragmentDefinitionTexts : string list;
 }
 
 type parserState = {
@@ -52,7 +52,7 @@ type parserState = {
   currentDefaultSelectionPathPrefix : selectionPathSegment list;
   currentBranch : selectionBranch option;
   requestedOperationName : string option;
-  pendingRawFragmentDefinitionTexts : string list;
+  finalizedFragmentDefinitionTexts : string list;
 }
 
 let usageText =
@@ -264,11 +264,11 @@ let segmentsOfSelectionPath selectionPath =
       ]
   | None, None -> fieldSegmentsOfPath selectionPath
 
-let selectionPathsOfExpressions fieldExpressions =
-  fieldExpressions
-  |> List.concat_map (fun fieldExpression ->
+let selectionPathsOfExpressions selectionExpressions =
+  selectionExpressions
+  |> List.concat_map (fun selectionExpression ->
       let paths =
-        fieldExpression |> String.split_on_char ',' |> List.map String.trim
+        selectionExpression |> String.split_on_char ',' |> List.map String.trim
         |> List.filter (fun path -> path <> "")
       in
 
@@ -528,7 +528,7 @@ let initialParserState =
     currentDefaultSelectionPathPrefix = [];
     currentBranch = None;
     requestedOperationName = None;
-    pendingRawFragmentDefinitionTexts = [];
+    finalizedFragmentDefinitionTexts = [];
   }
 
 let currentInvocationOfState parserState =
@@ -537,7 +537,7 @@ let currentInvocationOfState parserState =
   {
     operationDefinitions = List.rev parserState.finalizedOperationDefinitions;
     selectedOperationName = parserState.requestedOperationName;
-    rawFragmentDefinitionTexts = parserState.pendingRawFragmentDefinitionTexts;
+    fragmentDefinitionTexts = parserState.finalizedFragmentDefinitionTexts;
   }
 
 let operationHasSelections operation =
@@ -713,8 +713,8 @@ let handleFragmentDefinition parserState fragmentDefinitionText =
 
   {
     finalizedParserState with
-    pendingRawFragmentDefinitionTexts =
-      finalizedParserState.pendingRawFragmentDefinitionTexts
+    finalizedFragmentDefinitionTexts =
+      finalizedParserState.finalizedFragmentDefinitionTexts
       @ [ fragmentDefinitionText ];
   }
 

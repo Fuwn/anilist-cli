@@ -8,17 +8,17 @@ let graphQlArgumentsOfOptionPairs optionPairs =
         value = optionValue;
       })
 
-let graphQlFieldNameOfSegment ~isTargetRoot fieldName =
-  if isTargetRoot then GraphQlName.upperCamelCaseOfCliToken fieldName
+let graphQlFieldNameOfSegment ~isAtOperationRoot fieldName =
+  if isAtOperationRoot then GraphQlName.upperCamelCaseOfCliToken fieldName
   else GraphQlName.lowerCamelCaseOfCliToken fieldName
 
-let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
+let rec lowerSelectionPathSegments ~isAtOperationRoot selectionPathSegments
     selectionSet =
-  let lowerTail ~isTargetRoot = function
+  let lowerTail ~isAtOperationRoot = function
     | [] -> selectionSet
     | remainingSelectionPathSegments ->
         [
-          lowerSelectionPathSegments ~isTargetRoot
+          lowerSelectionPathSegments ~isAtOperationRoot
             remainingSelectionPathSegments selectionSet;
         ]
   in
@@ -32,11 +32,11 @@ let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
       GraphQlDocument.Field
         {
           alias = fieldAlias;
-          name = graphQlFieldNameOfSegment ~isTargetRoot fieldName;
+          name = graphQlFieldNameOfSegment ~isAtOperationRoot fieldName;
           arguments = graphQlArgumentsOfOptionPairs fieldArgumentPairs;
           directives = fieldDirectiveTexts;
           selectionSet =
-            lowerTail ~isTargetRoot:false remainingSelectionPathSegments;
+            lowerTail ~isAtOperationRoot:false remainingSelectionPathSegments;
         }
   | InlineFragmentSegment
       { inlineFragmentTypeCondition; inlineFragmentDirectiveTexts }
@@ -46,7 +46,8 @@ let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
           typeCondition =
             GraphQlName.upperCamelCaseOfCliToken inlineFragmentTypeCondition;
           directives = inlineFragmentDirectiveTexts;
-          selectionSet = lowerTail ~isTargetRoot remainingSelectionPathSegments;
+          selectionSet =
+            lowerTail ~isAtOperationRoot remainingSelectionPathSegments;
         }
   | FragmentSpreadSegment { fragmentSpreadName; fragmentSpreadDirectiveTexts }
     :: remainingSelectionPathSegments ->
@@ -60,10 +61,10 @@ let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
             directives = fragmentSpreadDirectiveTexts;
           }
 
-let lowerSelectionPaths ~isTargetRoot selectionPaths =
+let lowerSelectionPaths ~isAtOperationRoot selectionPaths =
   selectionPaths
   |> List.map (fun segments ->
-      lowerSelectionPathSegments ~isTargetRoot segments [])
+      lowerSelectionPathSegments ~isAtOperationRoot segments [])
 
 type request = {
   document : GraphQlDocument.t;
@@ -80,9 +81,9 @@ let lowerSelectionBranch selectionBranch =
       selectionBranch.selectionPathSegments
   in
 
-  lowerSelectionPathSegments ~isTargetRoot:true
+  lowerSelectionPathSegments ~isAtOperationRoot:true
     selectionBranch.selectionPathSegments
-    (lowerSelectionPaths ~isTargetRoot:selectionsRemainAtRoot
+    (lowerSelectionPaths ~isAtOperationRoot:selectionsRemainAtRoot
        selectionBranch.selectionPaths)
 
 let lowerOperationDefinition
@@ -102,7 +103,7 @@ let lowerOperationDefinition
       variableDefinitions;
       directives = operationDirectiveTexts;
       selectionSet =
-        lowerSelectionPaths ~isTargetRoot:true rootSelectionPaths
+        lowerSelectionPaths ~isAtOperationRoot:true rootSelectionPaths
         @ List.map lowerSelectionBranch selectionBranches;
     }
   in
@@ -138,7 +139,7 @@ let lower (invocation : CommandLineInvocation.t) =
     document =
       {
         GraphQlDocument.operations = loweredOperations |> List.map fst;
-        fragmentDefinitions = invocation.rawFragmentDefinitionTexts;
+        fragmentDefinitions = invocation.fragmentDefinitionTexts;
       };
     selectedOperationName;
     loweredVariableAssignments;
