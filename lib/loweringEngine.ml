@@ -1,10 +1,11 @@
-let rec lowerSelectionPath ~isAtOperationRoot selectionPath leafSelectionSet =
+let rec lowerSelectionPath ~isAtOperationRoot ~leafSelectionPaths selectionPath
+    =
   let lowerRemaining ~isAtOperationRoot = function
-    | [] -> leafSelectionSet
+    | [] -> lowerSelectionPaths ~isAtOperationRoot leafSelectionPaths
     | remainingSelectionPath ->
         [
-          lowerSelectionPath ~isAtOperationRoot remainingSelectionPath
-            leafSelectionSet;
+          lowerSelectionPath ~isAtOperationRoot ~leafSelectionPaths
+            remainingSelectionPath;
         ]
   in
 
@@ -36,29 +37,15 @@ let rec lowerSelectionPath ~isAtOperationRoot selectionPath leafSelectionSet =
         }
   | (GraphQlDocument.FragmentSpread _ as fragmentSpread) :: _ -> fragmentSpread
 
-let lowerSelectionPaths ~isAtOperationRoot selectionPaths =
-  selectionPaths
-  |> List.map (fun selectionPath ->
-      lowerSelectionPath ~isAtOperationRoot selectionPath [])
+and lowerSelectionPaths ~isAtOperationRoot selectionPaths =
+  List.map
+    (lowerSelectionPath ~isAtOperationRoot ~leafSelectionPaths:[])
+    selectionPaths
 
 type request = {
   document : GraphQlDocument.t;
   selectedVariableAssignments : (string * CliArgument.value) list;
 }
-
-let lowerSelectionBranch
-    { CommandLineInvocation.selectionPathSegments; selectionPaths } =
-  let selectionsRemainAtRoot =
-    List.for_all
-      (function
-        | GraphQlDocument.InlineFragment _ -> true
-        | GraphQlDocument.Field _ | GraphQlDocument.FragmentSpread _ -> false)
-      selectionPathSegments
-  in
-
-  lowerSelectionPath ~isAtOperationRoot:true selectionPathSegments
-    (lowerSelectionPaths ~isAtOperationRoot:selectionsRemainAtRoot
-       selectionPaths)
 
 let lowerOperationDefinition
     {
@@ -77,7 +64,12 @@ let lowerOperationDefinition
     directives = operationDirectiveTexts;
     selectionSet =
       lowerSelectionPaths ~isAtOperationRoot:true rootSelectionPaths
-      @ List.map lowerSelectionBranch selectionBranches;
+      @ List.map
+          (fun { CommandLineInvocation.selectionPathSegments; selectionPaths }
+             ->
+            lowerSelectionPath ~isAtOperationRoot:true
+              ~leafSelectionPaths:selectionPaths selectionPathSegments)
+          selectionBranches;
   }
 
 (* The lowerer assumes a validated invocation (see
