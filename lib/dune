@@ -3,12 +3,7 @@
  (public_name anilist)
  (modules
   cliArgument
-  commandLineInvocationBranch
-  commandLineInvocationParser
-  commandLineInvocationShared
-  commandLineInvocationState
-  commandLineInvocationTypes
-  commandLineInvocationValidation
+  commandLineInvocation
   graphQlFragmentDefinition
   graphQlOperation
   graphQlSelection
@@ -21,15 +16,8 @@
   schemaCommand
   schemaCommandTypes
   schemaQueries
-  selectionSet
-  selectionPath
   stringPrefix)
- (private_modules
-  commandLineInvocationBranch
-  commandLineInvocationState
-  commandLineInvocationValidation
-  schemaQueries
-  stringPrefix)
+ (private_modules schemaQueries stringPrefix)
  (libraries cohttp-lwt-unix lwt uri yojson)
  (flags
   (:standard -warn-error +a -w -70)))

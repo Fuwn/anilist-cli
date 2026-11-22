@@ -1,4 +1,93 @@
-open CommandLineInvocationTypes
+open CommandLineInvocation
+
+type scopedFieldSelection = {
+  relativeSelectionSet : GraphQlSelection.t list;
+  rootSelectionSet : GraphQlSelection.t list;
+}
+
+let graphQlArgumentsOfOptionPairs optionPairs =
+  optionPairs
+  |> List.map (fun (optionName, optionValue) ->
+      {
+        CliArgument.name = GraphQlName.lowerCamelCaseOfCliToken optionName;
+        value = optionValue;
+      })
+
+let graphQlFieldNameOfSegment ~isTargetRoot fieldName =
+  if isTargetRoot then GraphQlName.upperCamelCaseOfCliToken fieldName
+  else GraphQlName.lowerCamelCaseOfCliToken fieldName
+
+let graphQlTypeCondition typeCondition =
+  GraphQlName.upperCamelCaseOfCliToken typeCondition
+
+let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
+    selectionSet =
+  let lowerTail ~isTargetRoot = function
+    | [] -> selectionSet
+    | remainingSelectionPathSegments ->
+        [
+          lowerSelectionPathSegments ~isTargetRoot
+            remainingSelectionPathSegments selectionSet;
+        ]
+  in
+
+  match selectionPathSegments with
+  | [] ->
+      raise (Invalid_argument "Expected at least one selection path segment")
+  | FieldSegment
+      ({ fieldName; fieldAlias; fieldArgumentPairs; fieldDirectiveTexts } :
+        fieldSegment)
+    :: remainingSelectionPathSegments ->
+      GraphQlSelection.field
+        (GraphQlSelection.makeField ?alias:fieldAlias
+           ~name:(graphQlFieldNameOfSegment ~isTargetRoot fieldName)
+           ~arguments:(graphQlArgumentsOfOptionPairs fieldArgumentPairs)
+           ~directives:fieldDirectiveTexts
+           ~selectionSet:
+             (lowerTail ~isTargetRoot:false remainingSelectionPathSegments)
+           ())
+  | InlineFragmentSegment
+      ({ inlineFragmentTypeCondition; inlineFragmentDirectiveTexts } :
+        inlineFragmentSegment)
+    :: remainingSelectionPathSegments ->
+      GraphQlSelection.inlineFragment
+        (GraphQlSelection.makeInlineFragment
+           ~typeCondition:(graphQlTypeCondition inlineFragmentTypeCondition)
+           ~directives:inlineFragmentDirectiveTexts
+           ~selectionSet:
+             (lowerTail ~isTargetRoot remainingSelectionPathSegments)
+           ())
+  | FragmentSpreadSegment
+      ({ fragmentSpreadName; fragmentSpreadDirectiveTexts } :
+        fragmentSpreadSegment)
+    :: remainingSelectionPathSegments ->
+      if remainingSelectionPathSegments <> [] then
+        raise
+          (Invalid_argument "Fragment spreads cannot contain child selections")
+      else
+        GraphQlSelection.fragmentSpread
+          (GraphQlSelection.makeFragmentSpread ~name:fragmentSpreadName
+             ~directives:fragmentSpreadDirectiveTexts ())
+
+let selectionsOfScopedPaths ~capitalizeRootFieldNames scopedPaths =
+  scopedPaths
+  |> List.map (fun (_, segments) ->
+      lowerSelectionPathSegments ~isTargetRoot:capitalizeRootFieldNames segments
+        [])
+
+let scopedSelectionOfPaths ?(capitalizeRelativeRootFieldNames = false)
+    ?(capitalizeRootFieldNames = false) scopedPaths =
+  let relativePaths, rootPaths =
+    List.partition (fun (scope, _) -> scope = `Relative) scopedPaths
+  in
+
+  {
+    relativeSelectionSet =
+      selectionsOfScopedPaths
+        ~capitalizeRootFieldNames:capitalizeRelativeRootFieldNames relativePaths;
+    rootSelectionSet =
+      selectionsOfScopedPaths ~capitalizeRootFieldNames rootPaths;
+  }
 
 type request = {
   operations : GraphQlOperation.t list;
@@ -18,22 +107,21 @@ let lowerSelectionBranch ~capitalizeRootFieldNames ~isTargetRoot selectionBranch
          selectionBranch.selectionPathSegments
   in
   let scopedSelection =
-    SelectionSet.ofPaths
+    scopedSelectionOfPaths
       ~capitalizeRelativeRootFieldNames:selectionsRemainAtRoot
       ~capitalizeRootFieldNames selectionBranch.selectionPaths
   in
   let loweredSelection =
-    SelectionPath.lowerSelectionPathSegments ~isTargetRoot
-      selectionBranch.selectionPathSegments
-      scopedSelection.SelectionSet.relativeSelectionSet
+    lowerSelectionPathSegments ~isTargetRoot
+      selectionBranch.selectionPathSegments scopedSelection.relativeSelectionSet
   in
 
-  (loweredSelection, scopedSelection.SelectionSet.rootSelectionSet)
+  (loweredSelection, scopedSelection.rootSelectionSet)
 
 let selectionSetOfTarget ~capitalizeRootFieldNames ~rootSelectionPaths
     ~selectionBranches =
   let rootScopedSelection =
-    SelectionSet.ofPaths
+    scopedSelectionOfPaths
       ~capitalizeRelativeRootFieldNames:capitalizeRootFieldNames
       ~capitalizeRootFieldNames rootSelectionPaths
   in
@@ -44,8 +132,8 @@ let selectionSetOfTarget ~capitalizeRootFieldNames ~rootSelectionPaths
             ~isTargetRoot:capitalizeRootFieldNames)
   in
 
-  rootScopedSelection.SelectionSet.relativeSelectionSet
-  @ rootScopedSelection.SelectionSet.rootSelectionSet
+  rootScopedSelection.relativeSelectionSet
+  @ rootScopedSelection.rootSelectionSet
   @ List.map fst loweredBranches
   @ List.concat_map snd loweredBranches
 
@@ -59,8 +147,7 @@ let lowerStructuredFragmentDefinition structuredFragmentDefinition =
 
   GraphQlFragmentDefinition.make ~name:structuredFragmentDefinition.fragmentName
     ~typeCondition:
-      (SelectionPath.graphQlTypeCondition
-         structuredFragmentDefinition.fragmentTypeCondition)
+      (graphQlTypeCondition structuredFragmentDefinition.fragmentTypeCondition)
     ~directives:structuredFragmentDefinition.fragmentDirectiveTexts
     ~selectionSet ()
 
@@ -99,16 +186,17 @@ let selectedOperationAndVariables operations selectedOperationName =
 
       (Some selectedOperationName, variableAssignments)
 
-(* The lowerer assumes a validated invocation (see CommandLineInvocationValidation):
+(* The lowerer assumes a validated invocation (see
+   CommandLineInvocation.validatedInvocation):
    operation names are unique, and the selected operation name exists whenever
    the document requires one. *)
-let lower (invocation : CommandLineInvocationTypes.t) =
+let lower (invocation : CommandLineInvocation.t) =
   let loweredOperations =
     invocation.operationDefinitions |> List.map lowerOperationDefinition
   in
   let selectedOperationName, loweredVariableAssignments =
     selectedOperationAndVariables loweredOperations
-      invocation.CommandLineInvocationTypes.selectedOperationName
+      invocation.CommandLineInvocation.selectedOperationName
   in
   let fragmentDefinitions =
     (invocation.structuredFragmentDefinitions

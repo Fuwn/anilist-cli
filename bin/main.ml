@@ -85,11 +85,10 @@ let () =
           else printAndExit stderr 1 message
       | Ok None -> (
           match
-            CommandLineInvocationParser.invocationOfArguments
+            CommandLineInvocation.ofArguments
               requestOptions.RequestOptions.remainingArguments
           with
-          | Ok `Help ->
-              printAndExit stdout 0 CommandLineInvocationShared.usageText
+          | Ok `Help -> printAndExit stdout 0 CommandLineInvocation.usageText
           | Ok (`Invocation invocation) ->
               exit
                 (Lwt_main.run

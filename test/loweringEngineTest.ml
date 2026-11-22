@@ -1,9 +1,9 @@
 open Anilist
 
 let invocationOfArguments arguments =
-  match CommandLineInvocationParser.invocationOfArguments arguments with
+  match CommandLineInvocation.ofArguments arguments with
   | Ok (`Invocation invocation) -> Ok invocation
-  | Ok `Help -> Error CommandLineInvocationShared.usageText
+  | Ok `Help -> Error CommandLineInvocation.usageText
   | Error message -> Error message
 
 let assertEqual expected actual =
@@ -22,68 +22,70 @@ let assertContainsSubstring substring text =
   loop 0
 
 let fieldSegment ?alias ?(directives = []) fieldName optionPairs =
-  let loweredFieldSegment : CommandLineInvocationTypes.fieldSegment =
+  let loweredFieldSegment : CommandLineInvocation.fieldSegment =
     {
-      CommandLineInvocationTypes.fieldName;
-      CommandLineInvocationTypes.fieldAlias = alias;
-      CommandLineInvocationTypes.fieldArgumentPairs =
+      CommandLineInvocation.fieldName;
+      CommandLineInvocation.fieldAlias = alias;
+      CommandLineInvocation.fieldArgumentPairs =
         List.map
           (fun (name, value) -> (name, CliArgument.valueOfRawValue value))
           optionPairs;
-      CommandLineInvocationTypes.fieldDirectiveTexts = directives;
+      CommandLineInvocation.fieldDirectiveTexts = directives;
     }
   in
 
-  CommandLineInvocationTypes.FieldSegment loweredFieldSegment
+  CommandLineInvocation.FieldSegment loweredFieldSegment
 
 let inlineFragmentSegment ?(directives = []) typeCondition =
-  CommandLineInvocationTypes.InlineFragmentSegment
+  CommandLineInvocation.InlineFragmentSegment
     ({
-       CommandLineInvocationTypes.inlineFragmentTypeCondition = typeCondition;
+       CommandLineInvocation.inlineFragmentTypeCondition = typeCondition;
        inlineFragmentDirectiveTexts = directives;
      }
-      : CommandLineInvocationTypes.inlineFragmentSegment)
+      : CommandLineInvocation.inlineFragmentSegment)
 
 let fragmentSpreadSegment ?(directives = []) name =
-  CommandLineInvocationTypes.FragmentSpreadSegment
+  CommandLineInvocation.FragmentSpreadSegment
     ({
-       CommandLineInvocationTypes.fragmentSpreadName = name;
+       CommandLineInvocation.fragmentSpreadName = name;
        fragmentSpreadDirectiveTexts = directives;
      }
-      : CommandLineInvocationTypes.fragmentSpreadSegment)
+      : CommandLineInvocation.fragmentSpreadSegment)
 
 let selectionBranch selectionPathSegments selectionPaths =
   {
-    CommandLineInvocationTypes.selectionPathSegments;
-    selectionPaths = SelectionSet.parsedExpressions selectionPaths;
+    CommandLineInvocation.selectionPathSegments;
+    selectionPaths =
+      CommandLineInvocation.selectionPathsOfExpressions selectionPaths;
   }
 
 let operationDefinition ?operationName ?(variableDefinitions = [])
     ?(variableAssignments = []) ?(directives = []) rootSelectionPaths
     selectionBranches =
   ({
-     CommandLineInvocationTypes.operationType = CommandLineInvocationTypes.Query;
-     CommandLineInvocationTypes.operationName;
-     CommandLineInvocationTypes.variableDefinitions;
-     CommandLineInvocationTypes.variableAssignments =
+     CommandLineInvocation.operationType = CommandLineInvocation.Query;
+     CommandLineInvocation.operationName;
+     CommandLineInvocation.variableDefinitions;
+     CommandLineInvocation.variableAssignments =
        List.map
          (fun (name, value) -> (name, CliArgument.valueOfRawValue value))
          variableAssignments;
-     CommandLineInvocationTypes.operationDirectiveTexts = directives;
-     CommandLineInvocationTypes.rootSelectionPaths =
-       SelectionSet.parsedExpressions rootSelectionPaths;
-     CommandLineInvocationTypes.selectionBranches;
+     CommandLineInvocation.operationDirectiveTexts = directives;
+     CommandLineInvocation.rootSelectionPaths =
+       CommandLineInvocation.selectionPathsOfExpressions rootSelectionPaths;
+     CommandLineInvocation.selectionBranches;
    }
-    : CommandLineInvocationTypes.operationDefinition)
+    : CommandLineInvocation.operationDefinition)
 
 let structuredFragmentDefinition ?(directives = []) fragmentName
     fragmentTypeCondition fragmentRootSelectionPaths fragmentSelectionBranches =
   {
-    CommandLineInvocationTypes.fragmentName;
+    CommandLineInvocation.fragmentName;
     fragmentTypeCondition;
     fragmentDirectiveTexts = directives;
     fragmentRootSelectionPaths =
-      SelectionSet.parsedExpressions fragmentRootSelectionPaths;
+      CommandLineInvocation.selectionPathsOfExpressions
+        fragmentRootSelectionPaths;
     fragmentSelectionBranches;
   }
 
@@ -91,7 +93,7 @@ let invocationOfOperations ?selectedOperationName
     ?(structuredFragmentDefinitions = []) ?(rawFragmentDefinitionTexts = [])
     operationDefinitions =
   {
-    CommandLineInvocationTypes.operationDefinitions;
+    CommandLineInvocation.operationDefinitions;
     selectedOperationName;
     structuredFragmentDefinitions;
     rawFragmentDefinitionTexts;
@@ -123,18 +125,18 @@ let testExplicitOperationWithMultipleRootFields () =
       (invocationOfOperations ~selectedOperationName:"Viewer"
          [
            ({
-              CommandLineInvocationTypes.operationType =
-                CommandLineInvocationTypes.Query;
-              CommandLineInvocationTypes.operationName = Some "Viewer";
-              CommandLineInvocationTypes.variableDefinitions =
+              CommandLineInvocation.operationType = CommandLineInvocation.Query;
+              CommandLineInvocation.operationName = Some "Viewer";
+              CommandLineInvocation.variableDefinitions =
                 [ "$userName: String!" ];
-              CommandLineInvocationTypes.variableAssignments =
+              CommandLineInvocation.variableAssignments =
                 [ ("userName", CliArgument.String "fuwn") ];
-              CommandLineInvocationTypes.operationDirectiveTexts =
+              CommandLineInvocation.operationDirectiveTexts =
                 [ "cacheControl(maxAge: 60)" ];
-              CommandLineInvocationTypes.rootSelectionPaths =
-                SelectionSet.parsedExpressions [ "viewer.id" ];
-              CommandLineInvocationTypes.selectionBranches =
+              CommandLineInvocation.rootSelectionPaths =
+                CommandLineInvocation.selectionPathsOfExpressions
+                  [ "viewer.id" ];
+              CommandLineInvocation.selectionBranches =
                 [
                   selectionBranch
                     [ fieldSegment "user" [ ("name", "var:userName") ] ]
@@ -144,7 +146,7 @@ let testExplicitOperationWithMultipleRootFields () =
                     [ "title.romaji" ];
                 ];
             }
-             : CommandLineInvocationTypes.operationDefinition);
+             : CommandLineInvocation.operationDefinition);
          ])
   in
 
@@ -393,18 +395,18 @@ let testMultipleOperationDocumentLowering () =
       (invocationOfOperations ~selectedOperationName:"UserLookup"
          [
            ({
-              CommandLineInvocationTypes.operationType =
-                CommandLineInvocationTypes.Query;
-              CommandLineInvocationTypes.operationName = Some "Viewer";
-              CommandLineInvocationTypes.variableDefinitions = [];
-              CommandLineInvocationTypes.variableAssignments = [];
-              CommandLineInvocationTypes.operationDirectiveTexts =
+              CommandLineInvocation.operationType = CommandLineInvocation.Query;
+              CommandLineInvocation.operationName = Some "Viewer";
+              CommandLineInvocation.variableDefinitions = [];
+              CommandLineInvocation.variableAssignments = [];
+              CommandLineInvocation.operationDirectiveTexts =
                 [ "cacheControl(maxAge: 60)" ];
-              CommandLineInvocationTypes.rootSelectionPaths =
-                SelectionSet.parsedExpressions [ "viewer.id" ];
-              CommandLineInvocationTypes.selectionBranches = [];
+              CommandLineInvocation.rootSelectionPaths =
+                CommandLineInvocation.selectionPathsOfExpressions
+                  [ "viewer.id" ];
+              CommandLineInvocation.selectionBranches = [];
             }
-             : CommandLineInvocationTypes.operationDefinition);
+             : CommandLineInvocation.operationDefinition);
            operationDefinition ~operationName:"UserLookup" []
              [
                selectionBranch
@@ -434,13 +436,13 @@ let testSelectionSetCompatibilityAliasParsing () =
   with
   | Ok invocation ->
       let operationDefinition =
-        List.hd invocation.CommandLineInvocationTypes.operationDefinitions
+        List.hd invocation.CommandLineInvocation.operationDefinitions
       in
 
       assertEqual "1"
         (string_of_int
            (List.length
-              operationDefinition.CommandLineInvocationTypes.selectionBranches))
+              operationDefinition.CommandLineInvocation.selectionBranches))
   | Error message -> failwith message
 
 let testOperationParsing () =
@@ -472,28 +474,27 @@ let testOperationParsing () =
   with
   | Ok invocation ->
       let operationDefinition =
-        List.hd invocation.CommandLineInvocationTypes.operationDefinitions
+        List.hd invocation.CommandLineInvocation.operationDefinitions
       in
 
       assertEqual "Viewer"
-        (Option.get operationDefinition.CommandLineInvocationTypes.operationName);
+        (Option.get operationDefinition.CommandLineInvocation.operationName);
       assertEqual "1"
         (string_of_int
            (List.length
-              operationDefinition.CommandLineInvocationTypes.variableDefinitions));
+              operationDefinition.CommandLineInvocation.variableDefinitions));
       assertEqual "1"
         (string_of_int
            (List.length
-              operationDefinition.CommandLineInvocationTypes.variableAssignments));
+              operationDefinition.CommandLineInvocation.variableAssignments));
       assertEqual "1"
         (string_of_int
            (List.length
-              operationDefinition.CommandLineInvocationTypes.selectionBranches));
+              operationDefinition.CommandLineInvocation.selectionBranches));
       assertEqual "1"
         (string_of_int
            (List.length
-              invocation
-                .CommandLineInvocationTypes.structuredFragmentDefinitions))
+              invocation.CommandLineInvocation.structuredFragmentDefinitions))
   | Error message -> failwith message
 
 let testVariableAssignmentsPreserveGraphQlVariableNames () =
@@ -515,13 +516,13 @@ let testVariableAssignmentsPreserveGraphQlVariableNames () =
   with
   | Ok invocation ->
       let operationDefinition =
-        List.hd invocation.CommandLineInvocationTypes.operationDefinitions
+        List.hd invocation.CommandLineInvocation.operationDefinitions
       in
 
       assertEqual "user_name"
         (fst
            (List.hd
-              operationDefinition.CommandLineInvocationTypes.variableAssignments))
+              operationDefinition.CommandLineInvocation.variableAssignments))
   | Error message -> failwith message
 
 let testVariableAssignmentsRejectVariableReferences () =
@@ -579,30 +580,28 @@ let testRelativeAndAbsoluteFieldPathParsing () =
   with
   | Ok invocation -> (
       let operationDefinition =
-        List.hd invocation.CommandLineInvocationTypes.operationDefinitions
+        List.hd invocation.CommandLineInvocation.operationDefinitions
       in
       let secondSelectionBranch =
-        operationDefinition.CommandLineInvocationTypes.selectionBranches
-        |> List.tl |> List.hd
+        operationDefinition.CommandLineInvocation.selectionBranches |> List.tl
+        |> List.hd
       in
       let thirdSelectionBranch =
-        operationDefinition.CommandLineInvocationTypes.selectionBranches
-        |> List.rev |> List.hd
+        operationDefinition.CommandLineInvocation.selectionBranches |> List.rev
+        |> List.hd
       in
 
       assertEqual "2"
         (string_of_int
            (List.length
-              secondSelectionBranch
-                .CommandLineInvocationTypes.selectionPathSegments));
+              secondSelectionBranch.CommandLineInvocation.selectionPathSegments));
       match
-        List.hd
-          thirdSelectionBranch.CommandLineInvocationTypes.selectionPathSegments
+        List.hd thirdSelectionBranch.CommandLineInvocation.selectionPathSegments
       with
-      | CommandLineInvocationTypes.FieldSegment fieldSegment ->
-          assertEqual "media" fieldSegment.CommandLineInvocationTypes.fieldName
-      | CommandLineInvocationTypes.InlineFragmentSegment _
-      | CommandLineInvocationTypes.FragmentSpreadSegment _ ->
+      | CommandLineInvocation.FieldSegment fieldSegment ->
+          assertEqual "media" fieldSegment.CommandLineInvocation.fieldName
+      | CommandLineInvocation.InlineFragmentSegment _
+      | CommandLineInvocation.FragmentSpreadSegment _ ->
           failwith "Expected field segment")
   | Error message -> failwith message
 
@@ -621,13 +620,13 @@ let testExplicitOperationBarePositionalSiblingFields () =
   with
   | Ok invocation ->
       let operationDefinition =
-        List.hd invocation.CommandLineInvocationTypes.operationDefinitions
+        List.hd invocation.CommandLineInvocation.operationDefinitions
       in
 
       assertEqual "2"
         (string_of_int
            (List.length
-              operationDefinition.CommandLineInvocationTypes.selectionBranches))
+              operationDefinition.CommandLineInvocation.selectionBranches))
   | Error message -> failwith message
 
 let testInlineFragmentParsing () =
@@ -649,18 +648,17 @@ let testInlineFragmentParsing () =
   with
   | Ok invocation ->
       let operationDefinition =
-        List.hd invocation.CommandLineInvocationTypes.operationDefinitions
+        List.hd invocation.CommandLineInvocation.operationDefinitions
       in
       let inlineFragmentBranch =
-        operationDefinition.CommandLineInvocationTypes.selectionBranches
-        |> List.rev |> List.hd
+        operationDefinition.CommandLineInvocation.selectionBranches |> List.rev
+        |> List.hd
       in
 
       assertEqual "2"
         (string_of_int
            (List.length
-              inlineFragmentBranch
-                .CommandLineInvocationTypes.selectionPathSegments))
+              inlineFragmentBranch.CommandLineInvocation.selectionPathSegments))
   | Error message -> failwith message
 
 let testFragmentSpreadParsing () =
@@ -680,29 +678,28 @@ let testFragmentSpreadParsing () =
   with
   | Ok invocation -> (
       let operationDefinition =
-        List.hd invocation.CommandLineInvocationTypes.operationDefinitions
+        List.hd invocation.CommandLineInvocation.operationDefinitions
       in
       let fragmentSpreadBranch =
-        operationDefinition.CommandLineInvocationTypes.selectionBranches
-        |> List.rev |> List.hd
+        operationDefinition.CommandLineInvocation.selectionBranches |> List.rev
+        |> List.hd
       in
 
       match
         List.rev
-          fragmentSpreadBranch.CommandLineInvocationTypes.selectionPathSegments
+          fragmentSpreadBranch.CommandLineInvocation.selectionPathSegments
         |> List.hd
       with
-      | CommandLineInvocationTypes.FragmentSpreadSegment fragmentSpreadSegment
-        ->
+      | CommandLineInvocation.FragmentSpreadSegment fragmentSpreadSegment ->
           assertEqual "mediaCore"
-            fragmentSpreadSegment.CommandLineInvocationTypes.fragmentSpreadName;
+            fragmentSpreadSegment.CommandLineInvocation.fragmentSpreadName;
           assertEqual "1"
             (string_of_int
                (List.length
                   fragmentSpreadSegment
-                    .CommandLineInvocationTypes.fragmentSpreadDirectiveTexts))
-      | CommandLineInvocationTypes.FieldSegment _
-      | CommandLineInvocationTypes.InlineFragmentSegment _ ->
+                    .CommandLineInvocation.fragmentSpreadDirectiveTexts))
+      | CommandLineInvocation.FieldSegment _
+      | CommandLineInvocation.InlineFragmentSegment _ ->
           failwith "Expected fragment spread segment")
   | Error message -> failwith message
 
@@ -750,10 +747,9 @@ let testMultipleOperationParsing () =
   | Ok invocation ->
       assertEqual "2"
         (string_of_int
-           (List.length
-              invocation.CommandLineInvocationTypes.operationDefinitions));
+           (List.length invocation.CommandLineInvocation.operationDefinitions));
       assertEqual "UserLookup"
-        (Option.get invocation.CommandLineInvocationTypes.selectedOperationName)
+        (Option.get invocation.CommandLineInvocation.selectedOperationName)
   | Error message -> failwith message
 
 let testSchemaCommandParsing () =
