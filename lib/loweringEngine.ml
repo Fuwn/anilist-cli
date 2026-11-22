@@ -1,5 +1,3 @@
-open CommandLineInvocation
-
 let rec lowerSelectionPath ~isAtOperationRoot selectionPath leafSelectionSet =
   let lowerRemaining ~isAtOperationRoot = function
     | [] -> leafSelectionSet
@@ -36,11 +34,7 @@ let rec lowerSelectionPath ~isAtOperationRoot selectionPath leafSelectionSet =
           selectionSet =
             lowerRemaining ~isAtOperationRoot remainingSelectionPath;
         }
-  | (GraphQlDocument.FragmentSpread _ as fragmentSpread)
-    :: remainingSelectionPath ->
-      if remainingSelectionPath <> [] then
-        invalid_arg "Fragment spreads cannot contain child selections"
-      else fragmentSpread
+  | (GraphQlDocument.FragmentSpread _ as fragmentSpread) :: _ -> fragmentSpread
 
 let lowerSelectionPaths ~isAtOperationRoot selectionPaths =
   selectionPaths
@@ -52,23 +46,23 @@ type request = {
   selectedVariableAssignments : (string * CliArgument.value) list;
 }
 
-let lowerSelectionBranch selectionBranch =
+let lowerSelectionBranch
+    { CommandLineInvocation.selectionPathSegments; selectionPaths } =
   let selectionsRemainAtRoot =
     List.for_all
       (function
         | GraphQlDocument.InlineFragment _ -> true
         | GraphQlDocument.Field _ | GraphQlDocument.FragmentSpread _ -> false)
-      selectionBranch.selectionPathSegments
+      selectionPathSegments
   in
 
-  lowerSelectionPath ~isAtOperationRoot:true
-    selectionBranch.selectionPathSegments
+  lowerSelectionPath ~isAtOperationRoot:true selectionPathSegments
     (lowerSelectionPaths ~isAtOperationRoot:selectionsRemainAtRoot
-       selectionBranch.selectionPaths)
+       selectionPaths)
 
 let lowerOperationDefinition
     {
-      operationType;
+      CommandLineInvocation.operationType;
       operationName;
       variableDefinitions;
       variableAssignments = _;
@@ -86,26 +80,31 @@ let lowerOperationDefinition
       @ List.map lowerSelectionBranch selectionBranches;
   }
 
-let selectedOperationDefinition (invocation : CommandLineInvocation.t) =
-  match invocation.selectedOperationName with
-  | None -> List.hd invocation.operationDefinitions
-  | Some selectedOperationName ->
-      invocation.operationDefinitions
-      |> List.find (fun operationDefinition ->
-          operationDefinition.operationName = Some selectedOperationName)
-
 (* The lowerer assumes a validated invocation (see
-   CommandLineInvocation.validatedInvocation):
-   operation names are unique, and the selected operation name exists whenever
-   the document requires one. *)
-let lower (invocation : CommandLineInvocation.t) =
+   CommandLineInvocation.validatedInvocation): operation names are unique, and
+   the selected operation name exists whenever the document requires one. *)
+let lower
+    {
+      CommandLineInvocation.operationDefinitions;
+      selectedOperationName;
+      fragmentDefinitionTexts;
+    } =
+  let selectedOperationDefinition =
+    match selectedOperationName with
+    | None -> List.hd operationDefinitions
+    | Some _ ->
+        operationDefinitions
+        |> List.find (fun { CommandLineInvocation.operationName; _ } ->
+            operationName = selectedOperationName)
+  in
+
   {
     document =
       {
         GraphQlDocument.operations =
-          List.map lowerOperationDefinition invocation.operationDefinitions;
-        fragmentDefinitions = invocation.fragmentDefinitionTexts;
+          List.map lowerOperationDefinition operationDefinitions;
+        fragmentDefinitions = fragmentDefinitionTexts;
       };
     selectedVariableAssignments =
-      (selectedOperationDefinition invocation).variableAssignments;
+      selectedOperationDefinition.CommandLineInvocation.variableAssignments;
   }
