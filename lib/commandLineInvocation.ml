@@ -521,59 +521,42 @@ let rec hasDuplicateName = function
       List.mem name remainingNames || hasDuplicateName remainingNames
 
 let validatedInvocation invocation =
-  if invocation.operationDefinitions = [] then
-    Error (withUsageText "Missing operation selection.")
-  else if
-    not (List.for_all operationHasSelections invocation.operationDefinitions)
-  then Error (withUsageText "Each operation requires a selection set.")
+  let operations = invocation.operationDefinitions in
+  let operationNames =
+    List.filter_map (fun operation -> operation.operationName) operations
+  in
+  let isMultipleOperationDocument = List.length operations > 1 in
+  let usageError message = Error (withUsageText message) in
+
+  if operations = [] then usageError "Missing operation selection."
+  else if not (List.for_all operationHasSelections operations) then
+    usageError "Each operation requires a selection set."
   else if
     not
       (List.for_all
          (fun operation ->
            List.for_all branchHasCompleteInlineFragment
              operation.selectionBranches)
-         invocation.operationDefinitions)
+         operations)
   then Error "Inline fragments require a selection set."
+  else if hasDuplicateName operationNames then
+    usageError "Operation names must be unique."
+  else if
+    isMultipleOperationDocument
+    && List.length operationNames < List.length operations
+  then
+    usageError
+      "Multiple-operation documents require every operation to be named."
   else
-    let operationNames =
-      invocation.operationDefinitions
-      |> List.filter_map (fun operationDefinition ->
-          operationDefinition.operationName)
-    in
-
-    if hasDuplicateName operationNames then
-      Error (withUsageText "Operation names must be unique.")
-    else if
-      List.length invocation.operationDefinitions > 1
-      && List.exists
-           (fun operationDefinition -> operationDefinition.operationName = None)
-           invocation.operationDefinitions
-    then
-      Error
-        (withUsageText
-           "Multiple-operation documents require every operation to be named.")
-    else
-      match invocation.selectedOperationName with
-      | Some selectedOperationName ->
-          if
-            List.exists
-              (fun operationDefinition ->
-                operationDefinition.operationName = Some selectedOperationName)
-              invocation.operationDefinitions
-          then Ok invocation
-          else
-            Error
-              (withUsageText
-                 (Printf.sprintf
-                    "Selected operation %s does not exist in the document."
-                    selectedOperationName))
-      | None ->
-          if List.length invocation.operationDefinitions > 1 then
-            Error
-              (withUsageText
-                 "Multiple-operation documents require \
-                  --execute-operation-name.")
-          else Ok invocation
+    match invocation.selectedOperationName with
+    | Some name when not (List.mem name operationNames) ->
+        usageError
+          (Printf.sprintf
+             "Selected operation %s does not exist in the document." name)
+    | None when isMultipleOperationDocument ->
+        usageError
+          "Multiple-operation documents require --execute-operation-name."
+    | Some _ | None -> Ok invocation
 
 exception HelpRequested
 
