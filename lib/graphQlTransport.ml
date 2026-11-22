@@ -17,8 +17,7 @@ let requestTimeoutSeconds () =
           invalid_arg
             "ANILIST_REQUEST_TIMEOUT_SECONDS must be a positive finite number")
 
-let executeQuery ~operationName ~variables ~headers:additionalHeaders ~endpoint
-    ~query =
+let executeQuery ~operationName ~variables ~headers:additionalHeaders ~query =
   let requestBodyFields = [ ("query", `String query) ] in
   let requestBodyFields =
     match operationName with
@@ -43,7 +42,7 @@ let executeQuery ~operationName ~variables ~headers:additionalHeaders ~endpoint
          ])
       additionalHeaders
   in
-  let uri = Uri.of_string endpoint in
+  let uri = Uri.of_string (endpointOfEnvironment ()) in
   let body = Cohttp_lwt.Body.of_string requestBody in
   let timeoutSeconds = requestTimeoutSeconds () in
 

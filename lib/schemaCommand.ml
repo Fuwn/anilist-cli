@@ -155,10 +155,9 @@ let filterDirectiveResponse ~directiveName responseBody =
       |> Yojson.Safe.pretty_to_string
   with Yojson.Json_error _ | Yojson.Safe.Util.Type_error _ -> responseBody
 
-let execute ~headers ~endpoint schemaCommand =
+let execute ~headers schemaCommand =
   GraphQlTransport.executeQuery ~operationName:schemaCommand.operationName
-    ~variables:schemaCommand.variables ~headers ~endpoint
-    ~query:schemaCommand.queryText
+    ~variables:schemaCommand.variables ~headers ~query:schemaCommand.queryText
   >|= fun (statusCode, responseBody) ->
   match schemaCommand.requestedDirectiveName with
   | Some directiveName when statusCode >= 200 && statusCode < 300 ->

@@ -23,16 +23,14 @@ let exitAfterRequest request =
   exit
     (Lwt_main.run
        (Lwt.catch
-          (fun () ->
-            request (GraphQlTransport.endpointOfEnvironment ())
-            >|= exitCodeAfterPrintingResponse)
+          (fun () -> request () >|= exitCodeAfterPrintingResponse)
           (fun exceptionValue ->
             prerr_endline
               (Printf.sprintf "Request failed: %s"
                  (Printexc.to_string exceptionValue));
             Lwt.return 1)))
 
-let executeInvocation ~headers ~endpoint invocation =
+let executeInvocation ~headers invocation =
   let loweredRequest = LoweringEngine.lower invocation in
   let query = GraphQlDocument.render loweredRequest.LoweringEngine.document in
   let variables =
@@ -48,7 +46,7 @@ let executeInvocation ~headers ~endpoint invocation =
 
   GraphQlTransport.executeQuery
     ~operationName:invocation.CommandLineInvocation.selectedOperationName
-    ~variables ~headers ~endpoint ~query
+    ~variables ~headers ~query
 
 let () =
   match
@@ -59,13 +57,12 @@ let () =
       match SchemaCommand.ofArguments remainingArguments with
       | Ok `Help -> printAndExit stdout 0 SchemaCommand.usageText
       | Ok (`Command schemaCommand) ->
-          exitAfterRequest (fun endpoint ->
-              SchemaCommand.execute ~headers ~endpoint schemaCommand)
+          exitAfterRequest (fun () ->
+              SchemaCommand.execute ~headers schemaCommand)
       | Error message -> printAndExit stderr 1 message
       | Ok `NotSchemaCommand -> (
           match CommandLineInvocation.ofArguments remainingArguments with
           | Ok `Help -> printAndExit stdout 0 CommandLineInvocation.usageText
           | Ok (`Invocation invocation) ->
-              exitAfterRequest (fun endpoint ->
-                  executeInvocation ~headers ~endpoint invocation)
+              exitAfterRequest (fun () -> executeInvocation ~headers invocation)
           | Error message -> printAndExit stderr 1 message))
