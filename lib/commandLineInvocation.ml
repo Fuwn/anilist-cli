@@ -32,22 +32,24 @@ type selectionBranch = {
   selectionPaths : scopedSelectionPath list;
 }
 
+type definitionBody = {
+  directiveTexts : string list;
+  rootSelectionPaths : scopedSelectionPath list;
+  selectionBranches : selectionBranch list;
+}
+
 type operationDefinition = {
   operationType : operationType;
   operationName : string option;
   variableDefinitions : string list;
   variableAssignments : (string * CliArgument.value) list;
-  operationDirectiveTexts : string list;
-  rootSelectionPaths : scopedSelectionPath list;
-  selectionBranches : selectionBranch list;
+  operationBody : definitionBody;
 }
 
 type structuredFragmentDefinition = {
   fragmentName : string;
   fragmentTypeCondition : string;
-  fragmentDirectiveTexts : string list;
-  fragmentRootSelectionPaths : scopedSelectionPath list;
-  fragmentSelectionBranches : selectionBranch list;
+  fragmentBody : definitionBody;
 }
 
 type t = {
@@ -533,39 +535,35 @@ let resolvedSelectionPathSegmentsOfFragmentSpread parserState fragmentSpreadText
           (makeFragmentSpreadSegment normalizedFragmentSpreadName);
       ]
 
-let withMappedCurrentTarget parserState ~onFragment ~onOperation ~onNeither =
-  match parserState.currentTarget with
-  | Some (FragmentTarget fragment) ->
-      {
-        parserState with
-        currentTarget = Some (FragmentTarget (onFragment fragment));
-      }
-  | Some (OperationTarget operation) ->
-      {
-        parserState with
-        currentTarget = Some (OperationTarget (onOperation operation));
-      }
-  | None -> onNeither parserState
+let emptyDefinitionBody =
+  { directiveTexts = []; rootSelectionPaths = []; selectionBranches = [] }
+
+let withMappedCurrentBody parserState mapBody =
+  let currentTarget =
+    match parserState.currentTarget with
+    | Some (OperationTarget operation) ->
+        Some
+          (OperationTarget
+             { operation with operationBody = mapBody operation.operationBody })
+    | Some (FragmentTarget fragment) ->
+        Some
+          (FragmentTarget
+             { fragment with fragmentBody = mapBody fragment.fragmentBody })
+    | None -> None
+  in
+
+  { parserState with currentTarget }
 
 let finalizedCurrentBranch parserState =
   match parserState.currentBranch with
   | None -> parserState
   | Some branch ->
       let parserState =
-        withMappedCurrentTarget parserState
-          ~onFragment:(fun fragment ->
+        withMappedCurrentBody parserState (fun body ->
             {
-              fragment with
-              fragmentSelectionBranches =
-                fragment.fragmentSelectionBranches @ [ branch ];
+              body with
+              selectionBranches = body.selectionBranches @ [ branch ];
             })
-          ~onOperation:(fun operationDefinition ->
-            {
-              operationDefinition with
-              selectionBranches =
-                operationDefinition.selectionBranches @ [ branch ];
-            })
-          ~onNeither:(fun parserState -> parserState)
       in
 
       { parserState with currentBranch = None }
@@ -601,38 +599,21 @@ let withUpdatedCurrentSelectionBranch parserState branch =
   else { parserState with currentBranch = Some branch }
 
 let withAddedRootSelectionPaths parserState selectionPaths =
-  withMappedCurrentTarget parserState
-    ~onFragment:(fun fragment ->
-      {
-        fragment with
-        fragmentRootSelectionPaths =
-          fragment.fragmentRootSelectionPaths @ selectionPaths;
-      })
-    ~onOperation:(fun operationDefinition ->
-      {
-        operationDefinition with
-        rootSelectionPaths =
-          operationDefinition.rootSelectionPaths @ selectionPaths;
-      })
-    ~onNeither:(fun _ ->
-      raiseUsageError "Selections require an operation or fragment context.")
+  if parserState.currentTarget = None then
+    raiseUsageError "Selections require an operation or fragment context."
+  else
+    withMappedCurrentBody parserState (fun body ->
+        {
+          body with
+          rootSelectionPaths = body.rootSelectionPaths @ selectionPaths;
+        })
 
 let withAddedCurrentTargetDirective parserState directiveText =
-  withMappedCurrentTarget parserState
-    ~onFragment:(fun fragment ->
-      {
-        fragment with
-        fragmentDirectiveTexts =
-          fragment.fragmentDirectiveTexts @ [ directiveText ];
-      })
-    ~onOperation:(fun operationDefinition ->
-      {
-        operationDefinition with
-        operationDirectiveTexts =
-          operationDefinition.operationDirectiveTexts @ [ directiveText ];
-      })
-    ~onNeither:(fun _ ->
-      raiseUsageError "Directives require an operation or fragment context.")
+  if parserState.currentTarget = None then
+    raiseUsageError "Directives require an operation or fragment context."
+  else
+    withMappedCurrentBody parserState (fun body ->
+        { body with directiveTexts = body.directiveTexts @ [ directiveText ] })
 
 let startedOperationDefinition parserState operationType operationName =
   let parserState = finalizedAllPending parserState in
@@ -647,9 +628,7 @@ let startedOperationDefinition parserState operationType operationName =
              operationName;
              variableDefinitions = [];
              variableAssignments = [];
-             operationDirectiveTexts = [];
-             rootSelectionPaths = [];
-             selectionBranches = [];
+             operationBody = emptyDefinitionBody;
            });
     currentDefaultSelectionPathPrefix = [];
   }
@@ -675,9 +654,7 @@ let startedStructuredFragmentDefinition parserState fragmentName
            {
              fragmentName;
              fragmentTypeCondition;
-             fragmentDirectiveTexts = [];
-             fragmentRootSelectionPaths = [];
-             fragmentSelectionBranches = [];
+             fragmentBody = emptyDefinitionBody;
            });
   }
 
@@ -703,17 +680,8 @@ let currentInvocationOfState parserState =
     rawFragmentDefinitionTexts = parserState.pendingRawFragmentDefinitionTexts;
   }
 
-let operationDefinitionsHaveSelections operationDefinitions =
-  operationDefinitions
-  |> List.for_all (fun operationDefinition ->
-      operationDefinition.rootSelectionPaths <> []
-      || operationDefinition.selectionBranches <> [])
-
-let structuredFragmentsHaveSelections structuredFragmentDefinitions =
-  structuredFragmentDefinitions
-  |> List.for_all (fun fragmentDefinition ->
-      fragmentDefinition.fragmentRootSelectionPaths <> []
-      || fragmentDefinition.fragmentSelectionBranches <> [])
+let bodyHasSelections body =
+  body.rootSelectionPaths <> [] || body.selectionBranches <> []
 
 let branchHasCompleteInlineFragment branch =
   match List.rev branch.selectionPathSegments with
@@ -734,29 +702,27 @@ let duplicateNames names =
   names |> loop [] [] |> List.rev |> List.sort_uniq String.compare
 
 let validatedInvocation invocation =
-  if invocation.operationDefinitions = [] then
+  let operationBodies =
+    invocation.operationDefinitions
+    |> List.map (fun operation -> operation.operationBody)
+  in
+  let fragmentBodies =
+    invocation.structuredFragmentDefinitions
+    |> List.map (fun fragment -> fragment.fragmentBody)
+  in
+
+  if operationBodies = [] then
     Error (withUsageText "Missing operation selection.")
-  else if
-    not (operationDefinitionsHaveSelections invocation.operationDefinitions)
-  then Error (withUsageText "Each operation requires a selection set.")
-  else if
-    not
-      (structuredFragmentsHaveSelections
-         invocation.structuredFragmentDefinitions)
-  then
+  else if not (List.for_all bodyHasSelections operationBodies) then
+    Error (withUsageText "Each operation requires a selection set.")
+  else if not (List.for_all bodyHasSelections fragmentBodies) then
     Error (withUsageText "Each structured fragment requires a selection set.")
   else if
     not
       (List.for_all
-         (fun operation ->
-           List.for_all branchHasCompleteInlineFragment
-             operation.selectionBranches)
-         invocation.operationDefinitions
-      && List.for_all
-           (fun fragment ->
-             List.for_all branchHasCompleteInlineFragment
-               fragment.fragmentSelectionBranches)
-           invocation.structuredFragmentDefinitions)
+         (fun body ->
+           List.for_all branchHasCompleteInlineFragment body.selectionBranches)
+         (operationBodies @ fragmentBodies))
   then Error "Inline fragments require a selection set."
   else
     let operationNames =

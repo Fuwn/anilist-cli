@@ -118,15 +118,14 @@ let lowerSelectionBranch ~capitalizeRootFieldNames ~isTargetRoot selectionBranch
 
   (loweredSelection, scopedSelection.rootSelectionSet)
 
-let selectionSetOfTarget ~capitalizeRootFieldNames ~rootSelectionPaths
-    ~selectionBranches =
+let selectionSetOfBody ~capitalizeRootFieldNames body =
   let rootScopedSelection =
     scopedSelectionOfPaths
       ~capitalizeRelativeRootFieldNames:capitalizeRootFieldNames
-      ~capitalizeRootFieldNames rootSelectionPaths
+      ~capitalizeRootFieldNames body.rootSelectionPaths
   in
   let loweredBranches =
-    selectionBranches
+    body.selectionBranches
     |> List.map
          (lowerSelectionBranch ~capitalizeRootFieldNames
             ~isTargetRoot:capitalizeRootFieldNames)
@@ -137,39 +136,30 @@ let selectionSetOfTarget ~capitalizeRootFieldNames ~rootSelectionPaths
   @ List.map fst loweredBranches
   @ List.concat_map snd loweredBranches
 
-let lowerStructuredFragmentDefinition structuredFragmentDefinition =
+let lowerStructuredFragmentDefinition
+    { fragmentName; fragmentTypeCondition; fragmentBody } =
   let selectionSet =
-    selectionSetOfTarget ~capitalizeRootFieldNames:false
-      ~rootSelectionPaths:
-        structuredFragmentDefinition.fragmentRootSelectionPaths
-      ~selectionBranches:structuredFragmentDefinition.fragmentSelectionBranches
+    selectionSetOfBody ~capitalizeRootFieldNames:false fragmentBody
   in
 
-  GraphQlFragmentDefinition.make ~name:structuredFragmentDefinition.fragmentName
-    ~typeCondition:
-      (graphQlTypeCondition structuredFragmentDefinition.fragmentTypeCondition)
-    ~directives:structuredFragmentDefinition.fragmentDirectiveTexts
-    ~selectionSet ()
+  GraphQlFragmentDefinition.make ~name:fragmentName
+    ~typeCondition:(graphQlTypeCondition fragmentTypeCondition)
+    ~directives:fragmentBody.directiveTexts ~selectionSet ()
 
 let lowerOperationDefinition
-    ({
-       operationType;
-       operationName;
-       variableDefinitions;
-       variableAssignments;
-       operationDirectiveTexts;
-       rootSelectionPaths;
-       selectionBranches;
-     } :
-      operationDefinition) =
-  let operationSelectionSet =
-    selectionSetOfTarget ~capitalizeRootFieldNames:true ~rootSelectionPaths
-      ~selectionBranches
+    {
+      operationType;
+      operationName;
+      variableDefinitions;
+      variableAssignments;
+      operationBody;
+    } =
+  let selectionSet =
+    selectionSetOfBody ~capitalizeRootFieldNames:true operationBody
   in
   let operation =
     GraphQlOperation.make ?name:operationName ~variableDefinitions
-      ~directives:operationDirectiveTexts ~operationType
-      ~selectionSet:operationSelectionSet ()
+      ~directives:operationBody.directiveTexts ~operationType ~selectionSet ()
   in
 
   (operation, variableAssignments)

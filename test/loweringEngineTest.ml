@@ -59,35 +59,40 @@ let selectionBranch selectionPathSegments selectionPaths =
       CommandLineInvocation.selectionPathsOfExpressions selectionPaths;
   }
 
+let definitionBody directiveTexts rootSelectionPaths selectionBranches =
+  {
+    CommandLineInvocation.directiveTexts;
+    rootSelectionPaths =
+      CommandLineInvocation.selectionPathsOfExpressions rootSelectionPaths;
+    selectionBranches;
+  }
+
 let operationDefinition ?operationName ?(variableDefinitions = [])
     ?(variableAssignments = []) ?(directives = []) rootSelectionPaths
     selectionBranches =
-  ({
-     CommandLineInvocation.operationType = CommandLineInvocation.Query;
-     CommandLineInvocation.operationName;
-     CommandLineInvocation.variableDefinitions;
-     CommandLineInvocation.variableAssignments =
-       List.map
-         (fun (name, value) -> (name, CliArgument.valueOfRawValue value))
-         variableAssignments;
-     CommandLineInvocation.operationDirectiveTexts = directives;
-     CommandLineInvocation.rootSelectionPaths =
-       CommandLineInvocation.selectionPathsOfExpressions rootSelectionPaths;
-     CommandLineInvocation.selectionBranches;
-   }
-    : CommandLineInvocation.operationDefinition)
+  {
+    CommandLineInvocation.operationType = CommandLineInvocation.Query;
+    operationName;
+    variableDefinitions;
+    variableAssignments =
+      List.map
+        (fun (name, value) -> (name, CliArgument.valueOfRawValue value))
+        variableAssignments;
+    operationBody =
+      definitionBody directives rootSelectionPaths selectionBranches;
+  }
 
 let structuredFragmentDefinition ?(directives = []) fragmentName
-    fragmentTypeCondition fragmentRootSelectionPaths fragmentSelectionBranches =
+    fragmentTypeCondition rootSelectionPaths selectionBranches =
   {
     CommandLineInvocation.fragmentName;
     fragmentTypeCondition;
-    fragmentDirectiveTexts = directives;
-    fragmentRootSelectionPaths =
-      CommandLineInvocation.selectionPathsOfExpressions
-        fragmentRootSelectionPaths;
-    fragmentSelectionBranches;
+    fragmentBody =
+      definitionBody directives rootSelectionPaths selectionBranches;
   }
+
+let selectionBranchesOfOperation operationDefinition =
+  CommandLineInvocation.(operationDefinition.operationBody.selectionBranches)
 
 let invocationOfOperations ?selectedOperationName
     ?(structuredFragmentDefinitions = []) ?(rawFragmentDefinitionTexts = [])
@@ -124,29 +129,19 @@ let testExplicitOperationWithMultipleRootFields () =
     LoweringEngine.lower
       (invocationOfOperations ~selectedOperationName:"Viewer"
          [
-           ({
-              CommandLineInvocation.operationType = CommandLineInvocation.Query;
-              CommandLineInvocation.operationName = Some "Viewer";
-              CommandLineInvocation.variableDefinitions =
-                [ "$userName: String!" ];
-              CommandLineInvocation.variableAssignments =
-                [ ("userName", CliArgument.String "fuwn") ];
-              CommandLineInvocation.operationDirectiveTexts =
-                [ "cacheControl(maxAge: 60)" ];
-              CommandLineInvocation.rootSelectionPaths =
-                CommandLineInvocation.selectionPathsOfExpressions
-                  [ "viewer.id" ];
-              CommandLineInvocation.selectionBranches =
-                [
-                  selectionBranch
-                    [ fieldSegment "user" [ ("name", "var:userName") ] ]
-                    [ "id,name" ];
-                  selectionBranch
-                    [ fieldSegment "media" [ ("id", "42") ] ]
-                    [ "title.romaji" ];
-                ];
-            }
-             : CommandLineInvocation.operationDefinition);
+           operationDefinition ~operationName:"Viewer"
+             ~variableDefinitions:[ "$userName: String!" ]
+             ~variableAssignments:[ ("userName", "string:fuwn") ]
+             ~directives:[ "cacheControl(maxAge: 60)" ]
+             [ "viewer.id" ]
+             [
+               selectionBranch
+                 [ fieldSegment "user" [ ("name", "var:userName") ] ]
+                 [ "id,name" ];
+               selectionBranch
+                 [ fieldSegment "media" [ ("id", "42") ] ]
+                 [ "title.romaji" ];
+             ];
          ])
   in
 
@@ -394,19 +389,9 @@ let testMultipleOperationDocumentLowering () =
     LoweringEngine.lower
       (invocationOfOperations ~selectedOperationName:"UserLookup"
          [
-           ({
-              CommandLineInvocation.operationType = CommandLineInvocation.Query;
-              CommandLineInvocation.operationName = Some "Viewer";
-              CommandLineInvocation.variableDefinitions = [];
-              CommandLineInvocation.variableAssignments = [];
-              CommandLineInvocation.operationDirectiveTexts =
-                [ "cacheControl(maxAge: 60)" ];
-              CommandLineInvocation.rootSelectionPaths =
-                CommandLineInvocation.selectionPathsOfExpressions
-                  [ "viewer.id" ];
-              CommandLineInvocation.selectionBranches = [];
-            }
-             : CommandLineInvocation.operationDefinition);
+           operationDefinition ~operationName:"Viewer"
+             ~directives:[ "cacheControl(maxAge: 60)" ]
+             [ "viewer.id" ] [];
            operationDefinition ~operationName:"UserLookup" []
              [
                selectionBranch
@@ -441,8 +426,7 @@ let testSelectionSetCompatibilityAliasParsing () =
 
       assertEqual "1"
         (string_of_int
-           (List.length
-              operationDefinition.CommandLineInvocation.selectionBranches))
+           (List.length (selectionBranchesOfOperation operationDefinition)))
   | Error message -> failwith message
 
 let testOperationParsing () =
@@ -489,8 +473,7 @@ let testOperationParsing () =
               operationDefinition.CommandLineInvocation.variableAssignments));
       assertEqual "1"
         (string_of_int
-           (List.length
-              operationDefinition.CommandLineInvocation.selectionBranches));
+           (List.length (selectionBranchesOfOperation operationDefinition)));
       assertEqual "1"
         (string_of_int
            (List.length
@@ -583,12 +566,10 @@ let testRelativeAndAbsoluteFieldPathParsing () =
         List.hd invocation.CommandLineInvocation.operationDefinitions
       in
       let secondSelectionBranch =
-        operationDefinition.CommandLineInvocation.selectionBranches |> List.tl
-        |> List.hd
+        selectionBranchesOfOperation operationDefinition |> List.tl |> List.hd
       in
       let thirdSelectionBranch =
-        operationDefinition.CommandLineInvocation.selectionBranches |> List.rev
-        |> List.hd
+        selectionBranchesOfOperation operationDefinition |> List.rev |> List.hd
       in
 
       assertEqual "2"
@@ -625,8 +606,7 @@ let testExplicitOperationBarePositionalSiblingFields () =
 
       assertEqual "2"
         (string_of_int
-           (List.length
-              operationDefinition.CommandLineInvocation.selectionBranches))
+           (List.length (selectionBranchesOfOperation operationDefinition)))
   | Error message -> failwith message
 
 let testInlineFragmentParsing () =
@@ -651,8 +631,7 @@ let testInlineFragmentParsing () =
         List.hd invocation.CommandLineInvocation.operationDefinitions
       in
       let inlineFragmentBranch =
-        operationDefinition.CommandLineInvocation.selectionBranches |> List.rev
-        |> List.hd
+        selectionBranchesOfOperation operationDefinition |> List.rev |> List.hd
       in
 
       assertEqual "2"
@@ -681,8 +660,7 @@ let testFragmentSpreadParsing () =
         List.hd invocation.CommandLineInvocation.operationDefinitions
       in
       let fragmentSpreadBranch =
-        operationDefinition.CommandLineInvocation.selectionBranches |> List.rev
-        |> List.hd
+        selectionBranchesOfOperation operationDefinition |> List.rev |> List.hd
       in
 
       match
