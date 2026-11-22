@@ -1,10 +1,5 @@
 open CommandLineInvocation
 
-type scopedFieldSelection = {
-  relativeSelectionSet : GraphQlDocument.selection list;
-  rootSelectionSet : GraphQlDocument.selection list;
-}
-
 let graphQlArgumentsOfOptionPairs optionPairs =
   optionPairs
   |> List.map (fun (optionName, optionValue) ->
@@ -67,25 +62,17 @@ let rec lowerSelectionPathSegments ~isTargetRoot selectionPathSegments
             directives = fragmentSpreadDirectiveTexts;
           }
 
-let selectionsOfScopedPaths ~capitalizeRootFieldNames scopedPaths =
-  scopedPaths
-  |> List.map (fun (_, segments) ->
-      lowerSelectionPathSegments ~isTargetRoot:capitalizeRootFieldNames segments
-        [])
-
-let scopedSelectionOfPaths ?(capitalizeRelativeRootFieldNames = false)
-    ?(capitalizeRootFieldNames = false) scopedPaths =
-  let relativePaths, rootPaths =
-    List.partition (fun (scope, _) -> scope = `Relative) scopedPaths
+let lowerScopedPaths ~relativeAtRoot ~rootAtRoot scopedPaths =
+  let lowerPathsOfScope scope ~isTargetRoot =
+    scopedPaths
+    |> List.filter_map (fun (pathScope, segments) ->
+        if pathScope = scope then
+          Some (lowerSelectionPathSegments ~isTargetRoot segments [])
+        else None)
   in
 
-  {
-    relativeSelectionSet =
-      selectionsOfScopedPaths
-        ~capitalizeRootFieldNames:capitalizeRelativeRootFieldNames relativePaths;
-    rootSelectionSet =
-      selectionsOfScopedPaths ~capitalizeRootFieldNames rootPaths;
-  }
+  ( lowerPathsOfScope `Relative ~isTargetRoot:relativeAtRoot,
+    lowerPathsOfScope `Root ~isTargetRoot:rootAtRoot )
 
 type request = {
   document : GraphQlDocument.t;
@@ -93,8 +80,7 @@ type request = {
   loweredVariableAssignments : (string * CliArgument.value) list;
 }
 
-let lowerSelectionBranch ~capitalizeRootFieldNames ~isTargetRoot selectionBranch
-    =
+let lowerSelectionBranch ~isTargetRoot selectionBranch =
   let selectionsRemainAtRoot =
     isTargetRoot
     && List.for_all
@@ -103,41 +89,31 @@ let lowerSelectionBranch ~capitalizeRootFieldNames ~isTargetRoot selectionBranch
            | FieldSegment _ | FragmentSpreadSegment _ -> false)
          selectionBranch.selectionPathSegments
   in
-  let scopedSelection =
-    scopedSelectionOfPaths
-      ~capitalizeRelativeRootFieldNames:selectionsRemainAtRoot
-      ~capitalizeRootFieldNames selectionBranch.selectionPaths
-  in
-  let loweredSelection =
-    lowerSelectionPathSegments ~isTargetRoot
-      selectionBranch.selectionPathSegments scopedSelection.relativeSelectionSet
+  let relativeSelectionSet, rootSelectionSet =
+    lowerScopedPaths ~relativeAtRoot:selectionsRemainAtRoot
+      ~rootAtRoot:isTargetRoot selectionBranch.selectionPaths
   in
 
-  (loweredSelection, scopedSelection.rootSelectionSet)
+  ( lowerSelectionPathSegments ~isTargetRoot
+      selectionBranch.selectionPathSegments relativeSelectionSet,
+    rootSelectionSet )
 
-let selectionSetOfBody ~capitalizeRootFieldNames body =
-  let rootScopedSelection =
-    scopedSelectionOfPaths
-      ~capitalizeRelativeRootFieldNames:capitalizeRootFieldNames
-      ~capitalizeRootFieldNames body.rootSelectionPaths
+let selectionSetOfBody ~isTargetRoot body =
+  let relativeSelectionSet, rootSelectionSet =
+    lowerScopedPaths ~relativeAtRoot:isTargetRoot ~rootAtRoot:isTargetRoot
+      body.rootSelectionPaths
   in
   let loweredBranches =
-    body.selectionBranches
-    |> List.map
-         (lowerSelectionBranch ~capitalizeRootFieldNames
-            ~isTargetRoot:capitalizeRootFieldNames)
+    List.map (lowerSelectionBranch ~isTargetRoot) body.selectionBranches
   in
 
-  rootScopedSelection.relativeSelectionSet
-  @ rootScopedSelection.rootSelectionSet
+  relativeSelectionSet @ rootSelectionSet
   @ List.map fst loweredBranches
   @ List.concat_map snd loweredBranches
 
 let lowerStructuredFragmentDefinition
     { fragmentName; fragmentTypeCondition; fragmentBody } =
-  let selectionSet =
-    selectionSetOfBody ~capitalizeRootFieldNames:false fragmentBody
-  in
+  let selectionSet = selectionSetOfBody ~isTargetRoot:false fragmentBody in
 
   GraphQlDocument.Structured
     {
@@ -155,9 +131,7 @@ let lowerOperationDefinition
       variableAssignments;
       operationBody;
     } =
-  let selectionSet =
-    selectionSetOfBody ~capitalizeRootFieldNames:true operationBody
-  in
+  let selectionSet = selectionSetOfBody ~isTargetRoot:true operationBody in
   let operation =
     {
       GraphQlDocument.operationType;
