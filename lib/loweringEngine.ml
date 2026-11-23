@@ -42,38 +42,68 @@ and lowerSelectionPaths ~isAtOperationRoot selectionPaths =
     (lowerSelectionPath ~isAtOperationRoot ~leafSelectionPaths:[])
     selectionPaths
 
+let lowerDefinitionBody ~isAtOperationRoot
+    {
+      CommandLineInvocation.directiveTexts;
+      rootSelectionPaths;
+      selectionBranches;
+    } =
+  ( directiveTexts,
+    lowerSelectionPaths ~isAtOperationRoot rootSelectionPaths
+    @ List.map
+        (fun { CommandLineInvocation.parentPath; leafSelectionPaths } ->
+          lowerSelectionPath ~isAtOperationRoot ~leafSelectionPaths parentPath)
+        selectionBranches )
+
 let lowerOperationDefinition
     {
       CommandLineInvocation.operationType;
       operationName;
       variableDefinitions;
       variableAssignments = _;
-      operationDirectiveTexts;
-      rootSelectionPaths;
-      selectionBranches;
+      operationBody;
     } =
+  let directives, selectionSet =
+    lowerDefinitionBody ~isAtOperationRoot:true operationBody
+  in
+
   {
     GraphQlDocument.operationType;
     name = operationName;
     variableDefinitions;
-    directives = operationDirectiveTexts;
-    selectionSet =
-      lowerSelectionPaths ~isAtOperationRoot:true rootSelectionPaths
-      @ List.map
-          (fun { CommandLineInvocation.parentPath; leafSelectionPaths } ->
-            lowerSelectionPath ~isAtOperationRoot:true ~leafSelectionPaths
-              parentPath)
-          selectionBranches;
+    directives;
+    selectionSet;
   }
+
+let lowerFragmentDefinition = function
+  | CommandLineInvocation.FragmentText text -> GraphQlDocument.FragmentText text
+  | CommandLineInvocation.StructuredFragment
+      {
+        CommandLineInvocation.fragmentName;
+        fragmentTypeCondition;
+        fragmentBody;
+      } ->
+      let directives, selectionSet =
+        lowerDefinitionBody ~isAtOperationRoot:false fragmentBody
+      in
+
+      GraphQlDocument.StructuredFragment
+        {
+          name = fragmentName;
+          typeCondition =
+            GraphQlName.upperCamelCaseOfCliToken fragmentTypeCondition;
+          directives;
+          selectionSet;
+        }
 
 let lower
     {
       CommandLineInvocation.operationDefinitions;
       selectedOperationName = _;
-      fragmentDefinitionTexts;
+      fragmentDefinitions;
     } =
   {
     GraphQlDocument.operations =
       List.map lowerOperationDefinition operationDefinitions;
-    fragmentDefinitions = fragmentDefinitionTexts;
+    fragmentDefinitions = List.map lowerFragmentDefinition fragmentDefinitions;
   }

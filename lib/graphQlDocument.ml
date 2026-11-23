@@ -23,7 +23,19 @@ type operation = {
   selectionSet : selection list;
 }
 
-type t = { operations : operation list; fragmentDefinitions : string list }
+type fragmentDefinition =
+  | FragmentText of string
+  | StructuredFragment of {
+      name : string;
+      typeCondition : string;
+      directives : string list;
+      selectionSet : selection list;
+    }
+
+type t = {
+  operations : operation list;
+  fragmentDefinitions : fragmentDefinition list;
+}
 
 let normalizedDirectiveText text =
   let trimmed = String.trim text in
@@ -74,6 +86,10 @@ and renderSelectionSet ~indentationLevel selectionSet =
   |> List.map (renderSelection ~indentationLevel)
   |> String.concat "\n"
 
+let renderDefinition header selectionSet =
+  Printf.sprintf "%s {\n%s\n}" header
+    (renderSelectionSet ~indentationLevel:1 selectionSet)
+
 let renderOperation
     { operationType; name; variableDefinitions; directives; selectionSet } =
   let keyword =
@@ -89,11 +105,20 @@ let renderOperation
     | _ -> Printf.sprintf "(%s)" (String.concat ", " variableDefinitions)
   in
 
-  Printf.sprintf "%s%s%s%s {\n%s\n}" keyword renderedName
-    renderedVariableDefinitions
-    (renderDirectives directives)
-    (renderSelectionSet ~indentationLevel:1 selectionSet)
+  renderDefinition
+    (keyword ^ renderedName ^ renderedVariableDefinitions
+    ^ renderDirectives directives)
+    selectionSet
+
+let renderFragmentDefinition = function
+  | FragmentText text -> text
+  | StructuredFragment { name; typeCondition; directives; selectionSet } ->
+      renderDefinition
+        (Printf.sprintf "fragment %s on %s%s" name typeCondition
+           (renderDirectives directives))
+        selectionSet
 
 let render { operations; fragmentDefinitions } =
-  List.map renderOperation operations @ fragmentDefinitions
+  List.map renderOperation operations
+  @ List.map renderFragmentDefinition fragmentDefinitions
   |> String.concat "\n\n"

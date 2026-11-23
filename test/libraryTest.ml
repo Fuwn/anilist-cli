@@ -212,8 +212,40 @@ let invocationCases =
          }" );
     ( "query user --selection-set id media --selection-set id",
       Query "query {\n  User {\n    id\n  }\n  Media {\n    id\n  }\n}" );
-    ( "media --fragment core:Media --selection-set id",
-      Query "query {\n  Media(fragment: \"core:Media\") {\n    id\n  }\n}" );
+    ( "query --field media --id 1 --selection-set ...core --fragment \
+       core:media --directive deprecated --selection-set id,cover-image.large \
+       --field title --selection-set romaji --inline-fragment /anime \
+       --selection-set episodes",
+      Query
+        "query {\n\
+        \  Media(id: 1) {\n\
+        \    ...core\n\
+        \  }\n\
+         }\n\n\
+         fragment core on Media @deprecated {\n\
+        \  id\n\
+        \  coverImage {\n\
+        \    large\n\
+        \  }\n\
+        \  title {\n\
+        \    romaji\n\
+        \  }\n\
+        \  ... on Anime {\n\
+        \    episodes\n\
+        \  }\n\
+         }" );
+    ( "query --selection-set viewer.id --fragment-definition 'fragment raw on \
+       User { id }' --fragment core:User --selection-set name",
+      Query
+        "query {\n\
+        \  Viewer {\n\
+        \    id\n\
+        \  }\n\
+         }\n\n\
+         fragment raw on User { id }\n\n\
+         fragment core on User {\n\
+        \  name\n\
+         }" );
     ( "media --selection-set root:id",
       Query "query {\n  Media {\n    root: id\n  }\n}" );
     ( "query --variable-definition '$user_name: String!' --variable \
@@ -230,7 +262,58 @@ let invocationCases =
        Media { id }' --variable id=1",
       Failure "--variable requires a current operation." );
     ( "--fragment-definition 'fragment core on Media { id }' --selection-set id",
-      Failure "Selections require a current operation." );
+      Failure "Selections require a current operation or fragment." );
+    ( "query --selection-set ...core --fragment core:Media --field title \
+       --selection-set romaji user --selection-set id",
+      Query
+        "query {\n\
+        \  ...core\n\
+         }\n\n\
+         fragment core on Media {\n\
+        \  title {\n\
+        \    romaji\n\
+        \  }\n\
+        \  user {\n\
+        \    id\n\
+        \  }\n\
+         }" );
+    ( "--fragment core:Media --selection-set id media --id 1 --selection-set \
+       ...core",
+      Query
+        "query {\n\
+        \  Media(id: 1) {\n\
+        \    ...core\n\
+        \  }\n\
+         }\n\n\
+         fragment core on Media {\n\
+        \  id\n\
+         }" );
+    ( "--operation query:A --selection-set ...a --fragment a:Query \
+       --selection-set viewer.id --operation query:B --selection-set viewer.id \
+       --execute-operation-name B",
+      Query
+        "query A {\n\
+        \  ...a\n\
+         }\n\n\
+         query B {\n\
+        \  Viewer {\n\
+        \    id\n\
+        \  }\n\
+         }\n\n\
+         fragment a on Query {\n\
+        \  viewer {\n\
+        \    id\n\
+        \  }\n\
+         }" );
+    ( "query --selection-set ...a --fragment a:Media --inline-fragment anime",
+      Failure "Inline fragments require a selection set." );
+    ( "query --selection-set viewer.id --fragment core",
+      Failure "Structured fragments require name:Type syntax." );
+    ( "query --selection-set viewer.id --fragment core:Media",
+      Failure "Each structured fragment requires a selection set." );
+    ( "query --selection-set viewer.id --fragment core:Media --selection-set \
+       id --variable id=1",
+      Failure "--variable requires a current operation." );
     ("media --id --selection-set id", Failure "Missing value for option --id");
     ("query --selection-set ''", Failure "Selection set cannot be empty.");
     ("query --selection-set ', ,'", Failure "Selection set cannot be empty.");
